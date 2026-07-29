@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Two runtime dependencies is a feature. Keep them current, and keep the
+  # noise low — grouped, monthly.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: development
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

@@ -1,0 +1,54 @@
+name: Release
+
+# Tag a release to publish it:
+#   npm version minor && git push --follow-tags
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+  # Required for npm provenance — the published package carries a verifiable
+  # link back to this repo and this workflow run.
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: "https://registry.npmjs.org"
+
+      - run: npm ci
+      - run: npm run check
+
+      - name: Tag matches package.json
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package.json version $PKG" >&2
+            exit 1
+          fi
+
+      - name: No unreplaced placeholders
+        run: npm run check:owner
+
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Move the major tag so `uses: …@v1` keeps resolving
+        run: |
+          MAJOR="v$(echo "${GITHUB_REF_NAME#v}" | cut -d. -f1)"
+          git tag -f "$MAJOR"
+          git push -f origin "$MAJOR"
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes

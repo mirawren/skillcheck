@@ -1,0 +1,116 @@
+name: "skillcheck"
+description: "Activation preflight for agent skills — lint + trigger checks for SKILL.md and Claude Code plugins in 24 languages, so a skill that won't get picked fails the PR instead of shipping"
+author: "skillcheck contributors"
+branding:
+  icon: "check-circle"
+  color: "orange"
+
+inputs:
+  path:
+    description: "File or directory to scan (space-separated for several)"
+    required: false
+    default: "."
+  format:
+    description: "Output format: github (PR annotations), pretty, json, sarif, markdown, badge"
+    required: false
+    default: "github"
+  config:
+    description: "Path to a skillcheck.config.json (default: auto-discovered)"
+    required: false
+    default: ""
+  baseline:
+    description: "Baseline file of accepted findings (default: .skillcheck-baseline.json if present)"
+    required: false
+    default: ""
+  max-warnings:
+    description: "Fail when warnings exceed this number (default: unlimited)"
+    required: false
+    default: ""
+  fix:
+    description: "Apply safe automatic fixes before reporting (leaves the working tree dirty for a follow-up commit step)"
+    required: false
+    default: "false"
+  summary:
+    description: "Write a markdown report to the job summary"
+    required: false
+    default: "true"
+  scenarios:
+    description: "Also run trigger scenarios: auto (only if a scenarios file exists), true, or false"
+    required: false
+    default: "auto"
+  version:
+    description: "skillcheck version to run (npm dist-tag or semver)"
+    required: false
+    default: "latest"
+
+outputs:
+  score:
+    description: "Skill health score, 0-100"
+    value: ${{ steps.skillcheck.outputs.score }}
+  grade:
+    description: "Letter grade, A-F"
+    value: ${{ steps.skillcheck.outputs.grade }}
+  errors:
+    description: "Number of errors reported"
+    value: ${{ steps.skillcheck.outputs.errors }}
+  warnings:
+    description: "Number of warnings reported"
+    value: ${{ steps.skillcheck.outputs.warnings }}
+  skills:
+    description: "Number of skills scanned"
+    value: ${{ steps.skillcheck.outputs.skills }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run skillcheck
+      id: skillcheck
+      shell: bash
+      env:
+        SKILLCHECK_VERSION: ${{ inputs.version }}
+        SKILLCHECK_PATH: ${{ inputs.path }}
+        SKILLCHECK_FORMAT: ${{ inputs.format }}
+        SKILLCHECK_CONFIG: ${{ inputs.config }}
+        SKILLCHECK_BASELINE: ${{ inputs.baseline }}
+        SKILLCHECK_MAX_WARNINGS: ${{ inputs.max-warnings }}
+        SKILLCHECK_FIX: ${{ inputs.fix }}
+        SKILLCHECK_SUMMARY: ${{ inputs.summary }}
+      run: |
+        set -euo pipefail
+        args=()
+        [ -n "$SKILLCHECK_MAX_WARNINGS" ] && args+=(--max-warnings "$SKILLCHECK_MAX_WARNINGS")
+        [ -n "$SKILLCHECK_CONFIG" ] && args+=(--config "$SKILLCHECK_CONFIG")
+        [ -n "$SKILLCHECK_BASELINE" ] && args+=(--baseline "$SKILLCHECK_BASELINE")
+        [ "$SKILLCHECK_FIX" = "true" ] && args+=(--fix)
+        [ "$SKILLCHECK_SUMMARY" = "true" ] && args+=(--summary)
+        # `${args[@]+"${args[@]}"}`, not `"${args[@]}"`: macOS runners still ship
+        # bash 3.2, where expanding an *empty* array under `set -u` aborts with
+        # "unbound variable" — so a run that passed none of the optional inputs
+        # above would die before skillcheck started. This form expands to zero
+        # words when empty and to correctly quoted ones when not, on both 3.2
+        # and 5.x. $SKILLCHECK_PATH stays unquoted on purpose: `path` documents
+        # that it accepts several space-separated paths.
+        npx --yes "skillcheck@${SKILLCHECK_VERSION}" $SKILLCHECK_PATH \
+          --format "$SKILLCHECK_FORMAT" ${args[@]+"${args[@]}"}
+
+    # Trigger scenarios are a separate concern from linting: they answer "does
+    # this request still reach this skill?" and only run when the repo keeps a
+    # scenarios file.
+    - name: Run trigger scenarios
+      shell: bash
+      if: >-
+        inputs.scenarios == 'true' ||
+        (inputs.scenarios == 'auto' &&
+         hashFiles('skillcheck.scenarios.yaml', 'skillcheck.scenarios.yml') != '')
+      env:
+        SKILLCHECK_VERSION: ${{ inputs.version }}
+        SKILLCHECK_PATH: ${{ inputs.path }}
+        SKILLCHECK_CONFIG: ${{ inputs.config }}
+      run: |
+        set -euo pipefail
+        # `config` decides which skills are in scope (its `ignore` patterns), so
+        # the scenarios have to see the same set the check step did — otherwise
+        # a scenario resolves against skills the lint step ignored.
+        args=()
+        [ -n "$SKILLCHECK_CONFIG" ] && args+=(--config "$SKILLCHECK_CONFIG")
+        npx --yes "skillcheck@${SKILLCHECK_VERSION}" test $SKILLCHECK_PATH ${args[@]+"${args[@]}"}

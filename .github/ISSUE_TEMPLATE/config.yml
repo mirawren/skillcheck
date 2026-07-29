@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Propose a rule from the backlog
+    url: https://github.com/mirawren/skillcheck/blob/main/docs/GOOD_FIRST_RULES.md
+    about: A list of checks that are ready to be written, each one a small PR.
+  - name: Why is my skill not triggering?
+    url: https://github.com/mirawren/skillcheck/blob/main/docs/rules.md#when-to-use
+    about: Start with `npx skillcheck why "<the request that should reach it>"`.
+  - name: Add your language
+    url: https://github.com/mirawren/skillcheck/blob/main/CONTRIBUTING.md#add-your-language
+    about: One self-contained file, no dependencies. Nobody else can do it for you.

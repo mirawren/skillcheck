@@ -1,0 +1,16 @@
+# Example trigger tests — also used as skillcheck's own self-check in CI.
+#
+# Each scenario is a request a user might type and what should happen to it.
+# Run them with:  skillcheck test tests/fixtures/good --scenarios <this file>
+version: 1
+
+scenarios:
+  - prompt: "turn this markdown into a printable pdf report"
+    expect: pdf-report
+
+  - prompt: "export the analysis results as a PDF"
+    expect: pdf-report
+
+  # Nothing here handles travel, so nothing should claim it.
+  - prompt: "what time is it in Tokyo"
+    expect: none

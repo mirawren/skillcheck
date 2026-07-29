@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+*.log
+*.tgz
+.DS_Store
+skillcheck.json
+
+# Private working notes — never publish.
+skillcheck-launch-playbook.md

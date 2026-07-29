@@ -1,0 +1,79 @@
+{
+  "name": "skillcheck",
+  "version": "0.3.0",
+  "description": "When an agent skips your skill, nothing errors. skillcheck is the preflight for that silence — 15 lint rules, trigger simulation and trigger regression tests for SKILL.md and Claude Code plugins, in 24 languages. Offline, deterministic, CI-ready.",
+  "keywords": [
+    "agent-skills",
+    "skills",
+    "claude",
+    "claude-code",
+    "codex",
+    "cursor",
+    "lint",
+    "linter",
+    "ci",
+    "SKILL.md",
+    "agentskills",
+    "plugins",
+    "sarif",
+    "prompt-engineering",
+    "i18n",
+    "multilingual",
+    "unicode",
+    "cjk"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mirawren/skillcheck.git"
+  },
+  "homepage": "https://github.com/mirawren/skillcheck#readme",
+  "bugs": {
+    "url": "https://github.com/mirawren/skillcheck/issues"
+  },
+  "bin": {
+    "skillcheck": "./dist/bin.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "action.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "docs": "npm run build && node scripts/gen-docs.mjs",
+    "docs:check": "node scripts/gen-docs.mjs --check",
+    "set-owner": "node scripts/set-owner.mjs",
+    "check:owner": "node scripts/set-owner.mjs --check",
+    "bench": "npm run build && node scripts/bench.mjs",
+    "selfcheck": "node dist/bin.js . --format pretty",
+    "test:action": "node scripts/test-action.mjs",
+    "check": "npm run build && npm run typecheck && npm test && npm run test:action && npm run docs:check",
+    "prepublishOnly": "npm run check"
+  },
+  "dependencies": {
+    "picocolors": "^1.1.0",
+    "yaml": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^3.0.0"
+  }
+}
