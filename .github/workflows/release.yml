@@ -1,33 +1,37 @@
 name: Release
 
-# Tag a release to publish it:
-#   npm version minor && git push --follow-tags
+# Pushing a version tag publishes npm, moves the matching major Action tag,
+# and prepares the GitHub release draft. See RELEASING.md.
 on:
   push:
     tags: ["v*.*.*"]
 
 permissions:
-  contents: write
+  contents: read
   # Required for npm provenance — the published package carries a verifiable
   # link back to this repo and this workflow run.
   id-token: write
 
 jobs:
-  publish:
+  publish-npm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
-          cache: npm
+          node-version: 24
+          package-manager-cache: false
           registry-url: "https://registry.npmjs.org"
 
       - run: npm ci
       - run: npm run check
 
-      - name: Tag matches package.json
+      - name: Stable tag matches package.json
         run: |
+          if ! node -e 'process.exit(/^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(process.env.GITHUB_REF_NAME) ? 0 : 1)'; then
+            echo "release tags must be stable versions such as v1.2.3" >&2
+            exit 1
+          fi
           TAG="${GITHUB_REF_NAME#v}"
           PKG="$(node -p "require('./package.json').version")"
           if [ "$TAG" != "$PKG" ]; then
@@ -42,13 +46,56 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Move the major tag so `uses: …@v1` keeps resolving
+  release-github:
+    needs: publish-npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: "Move the major tag so uses: …@v1 keeps resolving"
         run: |
           MAJOR="v$(echo "${GITHUB_REF_NAME#v}" | cut -d. -f1)"
-          git tag -f "$MAJOR"
-          git push -f origin "$MAJOR"
+          for ATTEMPT in 1 2 3; do
+            # Refresh every exact release tag as well as the moving major tag.
+            # Fetching only v1 can leave a stale runner unable to identify the
+            # v1.0.2 commit that a concurrent release just moved it to.
+            git fetch --force --prune --prune-tags --tags origin
+            REMOTE_OID="$(git rev-parse --verify "refs/tags/$MAJOR" 2>/dev/null || true)"
+            CURRENT=""
+            if [ -n "$REMOTE_OID" ]; then
+              CURRENT_COMMIT="$(git rev-parse "$MAJOR^{commit}")"
+              CURRENT="$(
+                git for-each-ref --format='%(refname:short) %(objectname) %(*objectname)' refs/tags |
+                  awk -v oid="$CURRENT_COMMIT" '$1 ~ /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/ && ($2 == oid || $3 == oid) { print $1 }' |
+                  sort -V | tail -1
+              )"
+            else
+              git tag --delete "$MAJOR" >/dev/null 2>&1 || true
+            fi
 
-      - name: Create the GitHub release
+            NEWEST="$(printf '%s\n%s\n' "$CURRENT" "$GITHUB_REF_NAME" | sed '/^$/d' | sort -V | tail -1)"
+            if [ "$NEWEST" != "$GITHUB_REF_NAME" ]; then
+              echo "$MAJOR already points at newer release $CURRENT; leaving it there"
+              exit 0
+            fi
+
+            git tag --force "$MAJOR" "$GITHUB_REF_NAME"
+            if git push --force-with-lease="refs/tags/$MAJOR:$REMOTE_OID" origin "refs/tags/$MAJOR"; then
+              exit 0
+            fi
+            echo "major tag changed concurrently; retrying ($ATTEMPT/3)" >&2
+          done
+          echo "could not update $MAJOR without overwriting a concurrent release" >&2
+          exit 1
+
+      # Marketplace publication requires the repository owner to accept its
+      # agreement and check a box in GitHub's release UI, so automation stops
+      # at a ready-to-publish draft rather than making that choice for them.
+      - name: Create the GitHub release draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" --draft --generate-notes

@@ -2,7 +2,19 @@
 
 Notable changes. This project follows [semantic versioning](https://semver.org/).
 
-## 0.3.0 — unreleased
+## Unreleased
+
+## 1.0.0 — 2026-07-29
+
+The first stable public release.
+
+### Launch readiness
+
+- Fixed the GitHub-only color-sensitive test that left the public CI badge red while the same 497-test suite passed locally.
+- The release workflow is now parsed by `npm run check`, publishes npm before preparing the GitHub release, maintains the floating `v1` Action tag, and leaves a Marketplace-ready draft for the owner.
+- Each Action release resolves the matching exact npm version, so even an immutable `uses: mirawren/skillcheck@v1.0.0` tag stays reproducible; the moving `v1` tag advances both together.
+- `skillcheck init` now installs the `mirawren/skillcheck@v1` Action. That removes redundant workflow steps and makes genuine adoption visible in GitHub's dependency graph; Node repositories still receive a versioned devDependency.
+- Claude Code plugin checks now match the official contract: `plugin.json` is optional, and a present manifest requires only `name`. Missing `version` remains a publishing warning rather than an installation error.
 
 The release that answers the question the project is named after: **would this request actually reach this skill?**
 

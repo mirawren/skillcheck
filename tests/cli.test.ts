@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { runCli } from "../src/cli";
 import { captureIo, cleanupTmpRepos, skillMd, tmpRepo } from "./helpers";
@@ -40,7 +41,7 @@ describe("informational commands", () => {
     expect(runCli(["rules"], cap.io)).toBe(0);
     expect(cap.out()).toContain("when-to-use");
     expect(cap.out()).toContain("plugin-manifest");
-    expect(cap.out()).toMatch(/name-format\s+fix/);
+    expect(stripVTControlCharacters(cap.out())).toMatch(/name-format\s+fix/);
   });
 
   it("lists the recognized languages", () => {
@@ -386,6 +387,9 @@ describe("init", () => {
     expect(runCli(["init", root], cap.io)).toBe(0);
     expect(existsSync(join(root, ".github/workflows/skillcheck.yml"))).toBe(true);
     expect(existsSync(join(root, "skillcheck.scenarios.yaml"))).toBe(true);
+    const workflow = readFileSync(join(root, ".github/workflows/skillcheck.yml"), "utf8");
+    expect(workflow).toContain("uses: mirawren/skillcheck@v1");
+    expect(workflow).not.toContain("skillcheck@latest");
 
     process.chdir(root);
     expect(runCli(["test"], captureIo().io)).toBe(0);
@@ -404,7 +408,7 @@ describe("init", () => {
     const root = tmpRepo({ ...CLEAN, "package.json": '{\n  "name": "demo"\n}\n' });
     runCli(["init", root], captureIo().io);
     const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-    expect(pkg.devDependencies.skillcheck).toBeTruthy();
+    expect(pkg.devDependencies.skillcheck).toMatch(/^\^\d+\.\d+\.\d+$/);
   });
 
   // `init` is meant to be re-run as a repo grows, so the second run is as much

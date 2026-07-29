@@ -25,8 +25,8 @@ jobs:
           - os: macos-latest
             node: 22
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -46,13 +46,19 @@ jobs:
   self-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run build
+
+      - name: GitHub workflow files parse cleanly
+        run: npm run check:workflows
+
+      - name: Release major tag advances monotonically
+        run: npm run test:release
 
       - name: The good fixture passes clean
         run: node dist/bin.js tests/fixtures/good

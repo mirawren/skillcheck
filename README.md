@@ -23,7 +23,7 @@ terms    review, code, change, commit
   ⚠ coin flip — review-me leads grill-me by only 12%
 ```
 
-That's the part no other linter does: **it ranks your skills against a real request** and tells you when the choice between them is a coin flip.
+That's skillcheck's lane: **it ranks your skills against a real request** and tells you when the choice between them is a coin flip.
 
 It's a lexical model of the retrieval step, not a model run — a near-tie is a real risk, a clear win means nothing in your wording is working against you. [What that does and doesn't tell you](docs/trigger-simulation.md), stated precisely.
 
@@ -59,7 +59,7 @@ npx skillcheck languages  # which languages your skills are written in
 
 `init` writes a GitHub workflow, a starter scenarios file seeded from your own skills — so the first run passes — and prints the badge snippet. That's the whole adoption path.
 
-Works with [Agent Skills](https://agentskills.io) (`SKILL.md`) as used by Claude Code, Codex, Cursor and other agent tools, and with Claude Code plugins (`.claude-plugin/plugin.json`).
+Works with [Agent Skills](https://agentskills.io) (`SKILL.md`) as used by Claude Code, Codex, Cursor and other agent tools. It also checks the optional Claude Code `plugin.json` for valid JSON, its required `name`, and deliberate versioning; use [`claude plugin validate`](https://code.claude.com/docs/en/plugins-reference#debugging-and-development-tools) for Claude's complete host-specific schema.
 
 ## Trigger tests
 
@@ -126,7 +126,7 @@ Full format reference, including the compatibility promise: **[docs/scenarios.md
 | `body-size` | | bodies over the recommended budget, paid on every activation |
 | `broken-references` | | links to files that don't exist — the model follows a dead pointer |
 | `no-placeholders` | | `TODO` and `<your-api-key>` shipped to users |
-| `plugin-manifest` | | plugin.json missing required fields or a pinnable version |
+| `plugin-manifest` | | plugin.json missing its required name or using an invalid/unpinned version |
 
 🔧 = `skillcheck --fix` repairs it.
 
@@ -199,7 +199,7 @@ jobs:
   skillcheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: mirawren/skillcheck@v1
         with:
           path: "."
@@ -295,19 +295,17 @@ x-skillcheck:
 
 A rule set to `"off"` isn't run at all. `skillcheck explain <rule>` prints every option a rule accepts.
 
-## How it compares
+## Where it fits
 
-| | skillcheck | Structure linters | Agent security scanners |
-| --- | --- | --- | --- |
-| Frontmatter and schema validity | ✅ | ✅ | — |
-| Will the skill ever trigger | ✅ | — | — |
-| Two skills competing for one request | ✅ | — | — |
-| Rank a real request against your skills | ✅ | — | — |
-| Trigger regression tests in CI | ✅ | — | — |
-| Works on skills not written in English | ✅ | — | — |
-| Malicious or injected instructions | — | — | ✅ |
+| Question | skillcheck | [`skills-ref`](https://github.com/agentskills/agentskills) / [`claude plugin validate`](https://code.claude.com/docs/en/plugins-reference#debugging-and-development-tools) | [Security scanners](https://github.com/cisco-ai-defense/skill-scanner) | [Real-agent evals](https://github.com/microsoft/waza) |
+| --- | :---: | :---: | :---: | :---: |
+| Is the file or manifest structurally valid? | ✅ | ✅ | varies | varies |
+| Which sibling would this request reach? | ✅ | — | — | observed from a model run |
+| Did a PR change that answer? | ✅, offline | — | — | ✅, with a runtime and credentials |
+| Is an installed skill malicious? | — | — | ✅ | — |
+| Works without a model, network or API key? | ✅ | ✅ | varies | — |
 
-They're complementary. Run a security scanner on skills you install from other people; run skillcheck on the ones you write.
+These tools are complementary. Use the host's validator for its complete schema, a security scanner on skills you install from other people, and skillcheck for fast activation regressions in the skills you maintain. Add real-agent evals when you need model-level evidence rather than a deterministic preflight.
 
 **What it deliberately isn't:**
 
@@ -343,7 +341,7 @@ Two contributions matter most, and both are small.
 
 **[Add a rule.](CONTRIBUTING.md)** Most are under 100 lines including tests; [docs/GOOD_FIRST_RULES.md](docs/GOOD_FIRST_RULES.md) is a backlog of checks that are ready to be written.
 
-And the one that helps most of all: run skillcheck on your own skills and file [a false positive](../../issues/new?template=false-positive.md) if it flags something that's actually fine. Those get priority — a linter that cries wolf gets deleted, and it takes every other rule with it.
+And the one that helps most of all: run skillcheck on your own skills and file [a false positive](https://github.com/mirawren/skillcheck/issues/new?template=false-positive.md) if it flags something that's actually fine. Those get priority — a linter that cries wolf gets deleted, and it takes every other rule with it.
 
 ## License
 

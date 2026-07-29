@@ -20,7 +20,7 @@
 | [`broken-references`](#broken-references) |  | relative links in the body point at files that actually exist |
 | [`no-placeholders`](#no-placeholders) |  | body ships no TODO/FIXME/placeholder leftovers |
 | [`unknown-keys`](#unknown-keys) | ✅ | frontmatter keys are ones some host actually reads (catches typos) |
-| [`plugin-manifest`](#plugin-manifest) |  | plugin.json has the required fields and a valid semver version |
+| [`plugin-manifest`](#plugin-manifest) |  | plugin.json is valid, named, and versioned deliberately |
 
 Turn any rule off, or change its severity, in `skillcheck.config.json`:
 
@@ -436,15 +436,14 @@ description: Generates PDF reports.
 
 ## plugin-manifest
 
-> plugin.json has the required fields and a valid semver version
+> plugin.json is valid, named, and versioned deliberately
 
-A manifest missing `name` or `description` won't install. One without a `version` is worse than it looks: consumers have nothing to pin, so every push ships to everyone immediately and there is no way to say 'stay on the version that worked'.
+Claude Code's plugin manifest is optional and, when present, only `name` is required. A published plugin should usually add a semver `version`: without one, Claude falls back to the git commit SHA, so every commit is treated as a new version. Leaving it unset is useful during active development, but should be deliberate.
 
 **Trips on**
 
 ```yaml
 {
-  "name": "my-plugin",
   "version": "not-semver"
 }
 ```
@@ -454,8 +453,7 @@ A manifest missing `name` or `description` won't install. One without a `version
 ```yaml
 {
   "name": "my-plugin",
-  "description": "Skills for generating and reviewing PDF reports.",
-  "version": "0.1.0"
+  "version": "1.0.0"
 }
 ```
 

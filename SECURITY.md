@@ -28,4 +28,4 @@ Things worth reporting:
 
 ## Supported versions
 
-The latest published minor version receives fixes. Since 1.0 the package is published with [npm provenance](https://docs.npmjs.com/generating-provenance-statements), so you can verify a tarball came from this repository's release workflow.
+Starting with 1.0.0, the latest published minor version receives fixes. Releases are published with [npm provenance](https://docs.npmjs.com/generating-provenance-statements), so you can verify that a tarball came from this repository's release workflow.

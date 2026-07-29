@@ -25,6 +25,11 @@ import YAML from "yaml";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const action = YAML.parse(readFileSync(join(root, "action.yml"), "utf8"));
+const setupNode = action.runs.steps.find((step) => step.name === "Set up a supported Node.js runtime");
+if (setupNode?.uses !== "actions/setup-node@v6" || setupNode.with?.["node-version"] !== "20") {
+  throw new Error("action.yml must provision its supported Node 20 runtime with actions/setup-node@v6");
+}
+const actionVersion = action.inputs.version.default;
 
 const BASH = "/bin/bash";
 const work = mkdtempSync(join(tmpdir(), "skillcheck-action-"));
@@ -45,7 +50,7 @@ function stepScript(name) {
 }
 
 const BASE_ENV = {
-  SKILLCHECK_VERSION: "latest",
+  SKILLCHECK_VERSION: actionVersion,
   SKILLCHECK_PATH: ".",
   SKILLCHECK_FORMAT: "github",
   SKILLCHECK_CONFIG: "",
@@ -94,13 +99,13 @@ console.log(`action.yml under ${execFileSync(BASH, ["--version"]).toString().spl
 check("check step, all optional inputs empty", {
   step: CHECK,
   env: {},
-  expect: ["--yes", "skillcheck@latest", ".", "--format", "github", "--summary"],
+  expect: ["--yes", `skillcheck@${actionVersion}`, ".", "--format", "github", "--summary"],
 });
 
 check("test step, all optional inputs empty", {
   step: TEST,
   env: {},
-  expect: ["--yes", "skillcheck@latest", "test", "."],
+  expect: ["--yes", `skillcheck@${actionVersion}`, "test", "."],
 });
 
 // Every optional input set, including a path containing a space — the case a
@@ -115,7 +120,7 @@ check("check step, every optional input set", {
   },
   expect: [
     "--yes",
-    "skillcheck@latest",
+    `skillcheck@${actionVersion}`,
     ".",
     "--format",
     "github",
@@ -135,21 +140,21 @@ check("check step, every optional input set", {
 check("test step forwards config", {
   step: TEST,
   env: { SKILLCHECK_CONFIG: "my dir/skillcheck.config.json" },
-  expect: ["--yes", "skillcheck@latest", "test", ".", "--config", "my dir/skillcheck.config.json"],
+  expect: ["--yes", `skillcheck@${actionVersion}`, "test", ".", "--config", "my dir/skillcheck.config.json"],
 });
 
 // `path` is documented as accepting several space-separated paths.
 check("check step splits a multi-path input", {
   step: CHECK,
   env: { SKILLCHECK_PATH: "skills plugins", SKILLCHECK_SUMMARY: "false" },
-  expect: ["--yes", "skillcheck@latest", "skills", "plugins", "--format", "github"],
+  expect: ["--yes", `skillcheck@${actionVersion}`, "skills", "plugins", "--format", "github"],
 });
 
 // summary: false must drop the flag, not pass an empty argument.
 check("check step omits --summary when disabled", {
   step: CHECK,
   env: { SKILLCHECK_SUMMARY: "false" },
-  expect: ["--yes", "skillcheck@latest", ".", "--format", "github"],
+  expect: ["--yes", `skillcheck@${actionVersion}`, ".", "--format", "github"],
 });
 
 rmSync(work, { recursive: true, force: true });

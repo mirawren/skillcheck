@@ -41,7 +41,9 @@ inputs:
   version:
     description: "skillcheck version to run (npm dist-tag or semver)"
     required: false
-    default: "latest"
+    # Keep this exact version aligned with package.json. An immutable Action
+    # tag must never begin running newer npm code after it was published.
+    default: "1.0.0"
 
 outputs:
   score:
@@ -63,6 +65,12 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Set up a supported Node.js runtime
+      uses: actions/setup-node@v6
+      with:
+        node-version: "20"
+        package-manager-cache: false
+
     - name: Run skillcheck
       id: skillcheck
       shell: bash

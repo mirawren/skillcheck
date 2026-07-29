@@ -18,7 +18,7 @@ export interface InitOptions {
   dir?: string;
   /** Overwrite existing files. */
   force?: boolean;
-  /** skillcheck version to pin the devDependency to (e.g. "0.3.0"). */
+  /** skillcheck version to pin the devDependency to (e.g. "1.0.0"). */
   version?: string;
   /** Skills discovered in the target dir — seeds the starter trigger tests. */
   skills?: readonly ScenarioSeed[];
@@ -42,6 +42,7 @@ export interface InitResult {
 const SEED_LIMIT = 3;
 
 const WORKFLOW_REL = join(".github", "workflows", "skillcheck.yml");
+const ACTION_REPO = REPO_URL.replace(/^https:\/\/github\.com\//, "");
 
 /** The CI workflow scaffolded into an adopter's repo. */
 function workflowYaml(): string {
@@ -58,15 +59,11 @@ jobs:
   skillcheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npx --yes skillcheck@latest . --format github
-      # Trigger tests: assert each request still reaches the skill you meant.
-      # Delete this step if you don't keep a scenarios file.
-      - run: npx --yes skillcheck@latest test
-        if: hashFiles('skillcheck.scenarios.yaml', 'skillcheck.scenarios.yml') != ''
+      - uses: actions/checkout@v6
+      # The major tag keeps this stable, and using the Action makes adoption
+      # visible in GitHub's dependency graph. Trigger scenarios run
+      # automatically when a scenarios file exists.
+      - uses: ${ACTION_REPO}@v1
 `;
 }
 

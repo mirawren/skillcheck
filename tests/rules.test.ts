@@ -87,8 +87,39 @@ describe("bad fixture", () => {
   it("flags the non-semver plugin version", () => {
     const plugin = result.findings.filter((f) => f.ruleId === "plugin-manifest");
     expect(plugin.some((f) => f.message.includes("not valid semver"))).toBe(true);
-    expect(plugin.some((f) => f.message.includes("`description`"))).toBe(true);
   });
+});
+
+describe("plugin manifest", () => {
+  it("accepts the official minimal manifest and only recommends a release version", () => {
+    const root = tmpRepo({ ".claude-plugin/plugin.json": '{ "name": "minimal-plugin" }\n' });
+    const findings = runCheck([root]).findings.filter((f) => f.ruleId === "plugin-manifest");
+
+    expect(findings.every((f) => f.severity === "warning")).toBe(true);
+    expect(findings.some((f) => f.message.includes("`description`"))).toBe(false);
+    expect(findings.some((f) => f.message.includes("`version`"))).toBe(true);
+  });
+
+  it("accepts a named manifest with a semver release", () => {
+    const root = tmpRepo({
+      ".claude-plugin/plugin.json": '{ "name": "released-plugin", "version": "1.0.0" }\n',
+    });
+    const findings = runCheck([root]).findings.filter((f) => f.ruleId === "plugin-manifest");
+
+    expect(findings).toEqual([]);
+  });
+
+  it.each(["01.2.3", "1.2.3-alpha..1", "1.2.3-alpha.01", "1.2.3+."])(
+    "rejects malformed semver %s",
+    (version) => {
+      const root = tmpRepo({
+        ".claude-plugin/plugin.json": JSON.stringify({ name: "bad-version", version }),
+      });
+      const findings = runCheck([root]).findings.filter((f) => f.ruleId === "plugin-manifest");
+
+      expect(findings.some((f) => f.message.includes("not valid semver"))).toBe(true);
+    },
+  );
 });
 
 describe("when-to-use", () => {
