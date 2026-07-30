@@ -1,7 +1,7 @@
 {
   "name": "skillcheck",
   "version": "1.0.1",
-  "description": "When an agent skips your skill, nothing errors. skillcheck is the preflight for that silence — 15 lint rules, trigger simulation and trigger regression tests for SKILL.md and Claude Code plugins, in 24 languages. Offline, deterministic, CI-ready.",
+  "description": "When an agent skips your skill, nothing errors. skillcheck is the preflight for that silence — 16 lint rules, trigger simulation and trigger regression tests for SKILL.md, AGENTS.md, CLAUDE.md and Claude Code plugins, in 24 languages. Offline, deterministic, CI-ready.",
   "keywords": [
     "agent-skills",
     "skills",
@@ -13,7 +13,10 @@
     "linter",
     "ci",
     "SKILL.md",
+    "AGENTS.md",
+    "CLAUDE.md",
     "agentskills",
+    "context-engineering",
     "plugins",
     "sarif",
     "prompt-engineering",

@@ -325,12 +325,14 @@ export function renderBudget(report: BudgetReport, format: "pretty" | "json"): s
     out.push(pc.bold("Always in context"));
     out.push(pc.dim("  loaded before the user's first word, carried by every request in the session"));
     out.push("");
-    for (const line of report.always) out.push(row(line.label, line.tokens));
-    if (report.always.length > 1) {
+    // A total under a single row is arithmetic nobody needs; the unit still has
+    // to appear, so it rides along with whichever row is the last one.
+    if (report.always.length === 1) {
+      out.push(pc.bold(`${row(report.always[0].label, report.always[0].tokens)} tokens`));
+    } else {
+      for (const line of report.always) out.push(row(line.label, line.tokens));
       out.push(`  ${" ".repeat(labelWidth)}  ${"─".repeat(numberWidth)}`);
       out.push(pc.bold(`${row("total", report.alwaysTotal)} tokens`));
-    } else {
-      out.push(pc.dim(`  ${" ".repeat(labelWidth)}  ${" ".repeat(numberWidth)} tokens`));
     }
     out.push("");
   }

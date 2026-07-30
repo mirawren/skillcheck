@@ -81,6 +81,33 @@ jobs:
       - name: Trigger scenarios run
         run: (cd tests/fixtures/good && node ../../../dist/bin.js test . --scenarios skillcheck.scenarios.yaml)
 
+      # A context file's failures are the ones nobody sees: the agent reads a
+      # dead pointer and carries on. The fixture holds one dead `@import`, one
+      # dead link and one leftover marker, and all three have to be named.
+      - name: A context file's dead pointers are reported
+        run: |
+          set -euo pipefail
+          out=$( (cd tests/fixtures/context && node ../../../dist/bin.js .) || true)
+          echo "$out"
+          for expected in "imports \`docs/conventions.md\`" "links to \`docs/architecture.md\`" "TODO/FIXME marker"; do
+            case "$out" in
+              *"$expected"*) ;;
+              *) echo "context check did not report: $expected" >&2; exit 1 ;;
+            esac
+          done
+
+      - name: budget separates always-on context from what a skill adds
+        run: |
+          set -euo pipefail
+          out=$(cd tests/fixtures/context && node ../../../dist/bin.js budget . --format json)
+          echo "$out"
+          node -e "
+            const b = JSON.parse(process.argv[1]);
+            if (b.alwaysTotal <= 0) throw new Error('no always-on cost reported');
+            if (b.onActivation.length !== 4) throw new Error('expected four skill bodies');
+            if (b.always.length !== 2) throw new Error('expected descriptions plus one context file');
+          " "$out"
+
       # The multilingual path is the one most likely to break silently: nothing
       # in an English-only test run touches script segmentation, and a
       # regression there reports confident nonsense rather than failing. So the

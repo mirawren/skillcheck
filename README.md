@@ -9,7 +9,7 @@
 
 A skill's `description` is the only text a model reads before deciding whether to load it. Get it wrong and nothing errors — no warning, no log line. The skill just doesn't get picked, on someone else's machine, and you find out from a bug report that says "it didn't do the thing".
 
-`skillcheck` checks that text before you ship it, along with the fourteen other ways a `SKILL.md` breaks quietly — in [24 languages](docs/languages.md), because a skill that never triggers fails the same way in every one of them. It runs offline, in under a second, with no credentials.
+`skillcheck` checks that text before you ship it, along with the fourteen other ways a `SKILL.md` breaks quietly — in [24 languages](docs/languages.md), because a skill that never triggers fails the same way in every one of them. It reads your [`AGENTS.md` and `CLAUDE.md`](#the-other-file-the-agent-reads) too: the instructions loaded whether or not any skill fires. It runs offline, in under a second, with no credentials.
 
 <!-- verify: why "review my code changes before I commit" . cwd=tests/fixtures/bad exit=0 -->
 
@@ -99,8 +99,9 @@ Skill health: 79/100 (C)
 ## Get started
 
 ```sh
-npx skillcheck .          # check every skill and plugin manifest here
+npx skillcheck .          # check every skill, plugin manifest and AGENTS.md here
 npx skillcheck diff main  # what your change did to which skill wins
+npx skillcheck budget     # what your instructions cost before anyone asks anything
 npx skillcheck init       # add CI, trigger tests and a score badge
 npx skillcheck languages  # which languages your skills are written in
 ```
@@ -223,7 +224,7 @@ Full format reference, including the compatibility promise: **[docs/scenarios.md
 
 ## What it catches
 
-15 checks, each tied to a documented way a skill breaks. Full reference with examples: **[docs/rules.md](docs/rules.md)**, or `skillcheck explain <rule>` in the terminal.
+16 checks, each tied to a documented way agent instructions break. Full reference with examples: **[docs/rules.md](docs/rules.md)**, or `skillcheck explain <rule>` in the terminal.
 
 | Rule | | Catches |
 | --- | :---: | --- |
@@ -239,11 +240,95 @@ Full format reference, including the compatibility promise: **[docs/scenarios.md
 | `unknown-keys` | 🔧 | `descripton:` — the typo that makes a skill silently description-less |
 | `body-not-empty` | | a body that is only a title: fires, then does nothing |
 | `body-size` | | bodies over the recommended budget, paid on every activation |
-| `broken-references` | | links to files that don't exist — the model follows a dead pointer |
+| `broken-references` | | links — and `@imports` — to files that don't exist: the model follows a dead pointer |
 | `no-placeholders` | | `TODO` and `<your-api-key>` shipped to users |
+| `context-size` | | an `AGENTS.md` / `CLAUDE.md` big enough to crowd out the actual request |
 | `plugin-manifest` | | plugin.json missing its required name or using an invalid/unpinned version |
 
-🔧 = `skillcheck --fix` repairs it.
+🔧 = `skillcheck --fix` repairs it. The last three run over `AGENTS.md` and `CLAUDE.md` as well as `SKILL.md` — see below.
+
+## The other file the agent reads
+
+A skill is opt-in: its body costs nothing until the model picks it. `AGENTS.md`
+and `CLAUDE.md` are not. They're read before the user's first word and carried by
+every request in the session — and nothing checks them.
+
+They fail the same quiet way a skill does. A link whose file moved is followed to
+nothing. A `@import` whose target is gone is dropped without a word, and the
+session proceeds exactly as if those instructions had arrived.
+
+<!-- verify: . cwd=tests/fixtures/context exit=1 -->
+
+```console
+$ npx skillcheck .
+
+AGENTS.md
+  ✖ imports `docs/conventions.md`, which does not exist in this repository (broken-references):68
+      The model will try to read this path at runtime and silently fail. Fix the path or add the file.
+  ✖ links to `docs/architecture.md`, which does not exist in this repository (broken-references):70
+      The model will try to read this path at runtime and silently fail. Fix the path or add the file.
+  ⚠ AGENTS.md contains a TODO/FIXME marker — leftover placeholder content (no-placeholders):72
+      The agent reads this file at the start of every session, whether or not it is relevant to the request. Unfinished markers get followed or confuse it.
+
+2 errors, 1 warning (4 skills, 1 context file checked)
+Skill health: 89/100 (B)
+```
+
+`skillcheck .` finds them on its own — `AGENTS.md` and `CLAUDE.md`, at the root
+and nested. A repo with no skills at all is now worth running it in.
+
+The `@` heuristic is deliberately narrow, because this rule reports at error
+severity: a token counts as an import only if it holds a `/` and ends in a file
+extension. `@types/node`, `ops@example.com`, `@octocat` and a fenced example are
+all left alone. If yours isn't, that's [a false positive worth filing](https://github.com/mirawren/skillcheck/issues/new?template=false-positive.md).
+
+### What it all costs before anyone asks for anything
+
+The expensive half of a repo's agent instructions is invisible from any one file.
+A skill's **body** is opt-in. A skill's **description** is not: the model can't
+choose between skills without being shown all of them, so every description is in
+context on every request — including the forty belonging to skills that won't
+fire today.
+
+So the cost of *keeping* a skill is its description, paid always. The cost of
+*using* one is its body, paid sometimes. No per-file view separates those, and
+the first is the one that grows without anybody deciding to grow it.
+
+<!-- verify: budget . cwd=tests/fixtures/context exit=0 -->
+
+```console
+$ npx skillcheck budget
+
+Always in context
+  loaded before the user's first word, carried by every request in the session
+
+  4 skill descriptions  ~246
+  AGENTS.md             ~713
+                        ────
+  total                 ~959 tokens
+
+On top, when a skill fires — its body
+
+  incident-writeup       ~44
+  api-client             ~38
+  migration-runner       ~38
+  pdf-report             ~23
+
+Estimated offline and script-aware — roughly 4 characters per token in Latin
+text, 1 in Han. A description is what the model reads to choose a skill; a body
+is what it reads after choosing. Keeping a skill costs the first, using it the
+second.
+```
+
+It's a report, not a gate — it always exits `0`, and `--format json` has every
+line. There is no threshold for "too much context" that means the same thing in a
+two-skill repo and in a marketplace, so skillcheck doesn't invent one:
+`context-size` budgets the single file it can reason about, and this shows you
+the total.
+
+Estimates, not a tokenizer call — `budget` is as offline as everything else here.
+[What the estimate is made of](docs/rules.md#context-size), including why a
+Japanese file costs three times what the four-chars-per-token rule of thumb says.
 
 ## Your skills don't have to be in English
 
@@ -431,6 +516,7 @@ A rule set to `"off"` isn't run at all. `skillcheck explain <rule>` prints every
 | Is the file or manifest structurally valid? | ✅ | ✅ | varies | varies |
 | Which sibling would this request reach? | ✅ | — | — | observed from a model run |
 | Did a PR change that answer? | ✅ `diff`, offline, no config | — | — | ✅, with a runtime and credentials |
+| Is `AGENTS.md` / `CLAUDE.md` intact, and what does it cost? | ✅ `budget` | — | — | — |
 | Is an installed skill malicious? | — | — | ✅ | — |
 | Works without a model, network or API key? | ✅ | ✅ | varies | — |
 
@@ -439,7 +525,7 @@ These tools are complementary. Use the host's validator for its complete schema,
 **What it deliberately isn't:**
 
 - **Not a security scanner.** It tells you whether your own skills work, not whether someone else's is hostile.
-- **Not a prose style checker.** Every rule maps to a documented failure: won't load, won't trigger, wastes tokens, dead reference. If a check can't name the failure, it doesn't ship.
+- **Not a prose style checker.** Every rule maps to a documented failure: won't load, won't trigger, wastes tokens, dead reference. If a check can't name the failure, it doesn't ship. That holds for `AGENTS.md` too — skillcheck has no opinion on how you instruct your own agent, only on whether the file still points where it says it does.
 - **Not a translator.** It never rewrites your description, and never suggests you write it in English.
 - **Not model-dependent.** No network, no credentials, no API keys, two dependencies, no postinstall. It runs the same way on a fork's pull request as on yours — see [SECURITY.md](SECURITY.md).
 
@@ -461,7 +547,7 @@ Fast enough that nobody notices it in a pre-commit hook, and fast enough to lint
 - [ ] **A published agreement rate** — run `eval` once, commit what the model actually picked, and report how often the offline verdict agreed. The honest answer to "why should I trust a lexical simulation?" is a number, not a paragraph.
 - [ ] **A pinned false-positive corpus** — third-party skills labelled known-good, gating this repo's own CI, so a rule change that flags a correct file is a red build. It is also the only way a maintainer who doesn't read Turkish can safely merge a Turkish pattern.
 - [ ] **Cross-host parity** — which frontmatter each host really reads, checked in and kept current.
-- [ ] `CLAUDE.md` / `AGENTS.md` checks — size budgets, dead paths, contradictions with a skill.
+- [ ] **`AGENTS.md` contradictions** — a skill that instructs the opposite of the context file it is loaded next to. Size budgets and dead paths [already ship](#the-other-file-the-agent-reads); this one is the hard half, and starts as an exact-negation heuristic kept at warning severity.
 - [ ] Exact token counts as an opt-in, instead of the 4-chars-per-token estimate.
 
 ## Contributing

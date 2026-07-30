@@ -43,8 +43,8 @@ The bar for every one of these: **a false positive is worse than a miss.**
 | --- | --- | --- |
 | `skill-nesting-depth` | `SKILL.md` buried deeper than hosts discover | Confirm the actual limit per host first. |
 | `orphaned-references` | Files in the skill folder that nothing links to | Warning — the inverse of `broken-references`. |
-| `claude-md-size` | An oversized `CLAUDE.md` / `AGENTS.md` | Every token is paid in every session. Needs a new document type. |
-| `agents-md-contradiction` | A skill instructing the opposite of `AGENTS.md` | Hard; start with an exact-negation heuristic and keep it a warning. |
+| `agents-md-contradiction` | A skill instructing the opposite of `AGENTS.md` | Hard; start with an exact-negation heuristic and keep it a warning. The context document type it needs already exists — see `src/context.ts`. |
+| `context-duplicate-instruction` | The same instruction in both `AGENTS.md` and `CLAUDE.md` | Both get loaded, so it is paid twice. Warning; needs care about near-duplicates. |
 
 ## Tooling
 
