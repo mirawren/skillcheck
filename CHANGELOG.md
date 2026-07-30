@@ -4,7 +4,7 @@ Notable changes. This project follows [semantic versioning](https://semver.org/)
 
 ## Unreleased
 
-## 1.0.0 — 2026-07-29
+## 1.0.1 — 2026-07-30
 
 The first stable public release.
 
@@ -54,8 +54,11 @@ Every item here was a live finding on a file that was correct, most at error sev
 ### Launch readiness
 
 - Fixed the GitHub-only color-sensitive test that left the public CI badge red while the same 497-test suite passed locally.
+- Fixed Windows revision paths whose spelling differed only by case, which made `skillcheck diff` reject paths inside the repository as external.
+- The CI smoke tests now exercise their deliberately good and bad fixtures outside the repository's self-check exclusions instead of reporting an empty corpus as clean.
+- npm 11 preserves the packaged CLI entry point, and the release check rejects a manifest that npm would silently strip.
 - The release workflow is now parsed by `npm run check`, publishes npm before preparing the GitHub release, maintains the floating `v1` Action tag, and leaves a Marketplace-ready draft for the owner.
-- Each Action release resolves the matching exact npm version, so even an immutable `uses: mirawren/skillcheck@v1.0.0` tag stays reproducible; the moving `v1` tag advances both together.
+- Each Action release resolves the matching exact npm version, so even an immutable `uses: mirawren/skillcheck@v1.0.1` tag stays reproducible; the moving `v1` tag advances both together.
 - `skillcheck init` now installs the `mirawren/skillcheck@v1` Action. That removes redundant workflow steps and makes genuine adoption visible in GitHub's dependency graph; Node repositories still receive a versioned devDependency.
 - Claude Code plugin checks now match the official contract: `plugin.json` is optional, and a present manifest requires only `name`. Missing `version` remains a publishing warning rather than an installation error.
 - Added maintainer, release, and Claude for Open Source evidence guides for a verifiable public project and qualified, non-duplicative applications.

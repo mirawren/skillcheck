@@ -6,7 +6,8 @@ import YAML from "yaml";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const workflowDir = join(root, ".github", "workflows");
-const packageVersion = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
+const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const packageVersion = packageJson.version;
 const files = [
   join(root, "action.yml"),
   ...readdirSync(workflowDir)
@@ -16,6 +17,11 @@ const files = [
 ];
 
 let failures = 0;
+if (packageJson.bin?.skillcheck !== "dist/bin.js") {
+  console.error('  ✖ package.json\n      bin.skillcheck must be "dist/bin.js" so npm preserves the CLI');
+  failures++;
+}
+
 for (const file of files) {
   const label = relative(root, file);
   try {
@@ -46,7 +52,7 @@ for (const file of files) {
 }
 
 if (failures > 0) {
-  console.error(`\n${failures} GitHub YAML file(s) are invalid`);
+  console.error(`\n${failures} release configuration error(s)`);
   process.exit(1);
 }
 console.log(`\n${files.length} GitHub YAML files parse cleanly`);

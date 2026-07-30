@@ -50,7 +50,7 @@ inputs:
     required: false
     # Keep this exact version aligned with package.json. An immutable Action
     # tag must never begin running newer npm code after it was published.
-    default: "1.0.0"
+    default: "1.0.1"
 
 outputs:
   score:

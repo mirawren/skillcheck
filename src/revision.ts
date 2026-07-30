@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { isDiscoverableSkillPath } from "./discover.js";
 import { parseSkillText } from "./parse.js";
 import type { SkillDoc } from "./types.js";
@@ -144,14 +144,14 @@ function listSkills(root: string, ref: string, roots: readonly string[]): Revisi
 /** `path` expressed relative to the repo root, as a git pathspec. */
 function repoRelative(root: string, path: string): string {
   const abs = isAbsolute(path) ? resolve(path) : resolve(process.cwd(), path);
-  if (abs === root) return ".";
-  const prefix = root.endsWith(sep) ? root : root + sep;
-  if (!abs.startsWith(prefix)) {
+  const rel = relative(root, abs);
+  if (!rel) return ".";
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
     throw new RevisionError(
       `${path} is outside the git repository at ${root}, so it has no history to compare against`,
     );
   }
-  return abs.slice(prefix.length).split(sep).join("/");
+  return rel.split(sep).join("/");
 }
 
 /**

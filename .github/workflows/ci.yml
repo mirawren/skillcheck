@@ -69,17 +69,17 @@ jobs:
         run: npm run test:release
 
       - name: The good fixture passes clean
-        run: node dist/bin.js tests/fixtures/good
+        run: (cd tests/fixtures/good && ../../../dist/bin.js .)
 
       - name: The bad fixture fails
         run: |
-          if node dist/bin.js tests/fixtures/bad; then
+          if (cd tests/fixtures/bad && ../../../dist/bin.js .); then
             echo "expected a non-zero exit on the bad fixture" >&2
             exit 1
           fi
 
       - name: Trigger scenarios run
-        run: node dist/bin.js test tests/fixtures/good --scenarios tests/fixtures/good/skillcheck.scenarios.yaml
+        run: (cd tests/fixtures/good && ../../../dist/bin.js test . --scenarios skillcheck.scenarios.yaml)
 
       # The multilingual path is the one most likely to break silently: nothing
       # in an English-only test run touches script segmentation, and a
@@ -88,7 +88,7 @@ jobs:
       - name: Skills outside English are read, not deleted
         run: |
           set -euo pipefail
-          out=$(node dist/bin.js languages tests/fixtures/multilingual)
+          out=$(cd tests/fixtures/multilingual && ../../../dist/bin.js languages .)
           echo "$out"
           for expected in "English" "Japanese (日本語)" "Chinese (中文)"; do
             case "$out" in
@@ -102,7 +102,7 @@ jobs:
           set -euo pipefail
           # The Chinese skill names no format or product, so no request in
           # English or Japanese shares a single term with it.
-          out=$(node dist/bin.js tests/fixtures/multilingual)
+          out=$(cd tests/fixtures/multilingual && ../../../dist/bin.js .)
           echo "$out"
           case "$out" in
             *cross-language-trigger*) ;;
@@ -116,9 +116,9 @@ jobs:
 
       - name: Every output format is machine-valid
         run: |
-          node dist/bin.js tests/fixtures/bad --format json  > /tmp/out.json  || true
-          node dist/bin.js tests/fixtures/bad --format sarif > /tmp/out.sarif || true
-          node dist/bin.js tests/fixtures/good --format badge > /tmp/out.badge
+          (cd tests/fixtures/bad && ../../../dist/bin.js . --format json)  > /tmp/out.json  || true
+          (cd tests/fixtures/bad && ../../../dist/bin.js . --format sarif) > /tmp/out.sarif || true
+          (cd tests/fixtures/good && ../../../dist/bin.js . --format badge) > /tmp/out.badge
           node -e "JSON.parse(require('fs').readFileSync('/tmp/out.json','utf8'))"
           node -e "JSON.parse(require('fs').readFileSync('/tmp/out.sarif','utf8'))"
           node -e "const b=JSON.parse(require('fs').readFileSync('/tmp/out.badge','utf8')); if(b.schemaVersion!==1) process.exit(1)"
@@ -128,4 +128,4 @@ jobs:
           npm pack --silent
           npm install --no-save ./skillcheck-*.tgz
           ./node_modules/.bin/skillcheck --version
-          ./node_modules/.bin/skillcheck tests/fixtures/good
+          (cd tests/fixtures/good && ../../../node_modules/.bin/skillcheck .)
