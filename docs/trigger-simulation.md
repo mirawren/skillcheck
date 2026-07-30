@@ -20,9 +20,33 @@ That's the step skillcheck simulates. It cannot run a model in CI — that would
 
 | Verdict | Meaning |
 | --- | --- |
-| `clear` | One skill leads the runner-up by more than 15% of its score |
-| `close` | The top two are within 15% — a coin flip |
-| `none` | The best match caught less than a third of the request's content terms |
+| `clear` | One skill leads every other by more than 15% of its score |
+| `close` | Two or more skills sit within 15% of the leader — a coin flip |
+| `none` | Nothing matched, or the winner took less than a third of the request's *matchable* terms |
+
+**Coverage is measured over matchable terms**, meaning the request terms that occur in at least one skill in the repo. This matters more than it sounds. A real request is mostly words no description will ever contain — "help me", "set up", "quickly", "again". Counting those against the winner made coverage a measure of how conversationally the question was asked: ask *"help me set up a new webhook"* of a repo whose webhook skill is the only candidate and holds 100% of the score, and `help`, `set` and `new` outvoted the one word that decided the ranking. The verdict came back `none`, and `skillcheck test` failed the build with "nothing matched the request" — about the skill that was plainly the answer. The more naturally a request was phrased, the likelier that was.
+
+The honest cost of the fix is that a winner can now look confident on thin evidence, so the evidence is printed rather than hidden:
+
+```
+  ✔ clear — stripe-webhooks wins (only candidate)
+    matched 1 of 4 terms — help, set, new occur in no skill here
+```
+
+Read that as "one word carried this". It is not the same claim as a request whose every term landed.
+
+**A coin flip is the whole contender block, not the top two.** `margin` compares first place to second, which is the right question when two skills collide and the wrong one when five do — a ten-way tie would otherwise report a 0% gap between the arbitrary two that sorted highest and say nothing about the other eight. `close` fires when *any* skill sits within 15% of the leader, and the output names how many.
+
+On a `close` verdict the terms behind it are printed too:
+
+```
+  ⚠ coin flip — review-me leads grill-me by only 14%
+    they tie on: bug, case, change, code, commit, edge
+    only review-me: problem, repository
+    only grill-me: issue, repo
+```
+
+Both lines are facts about text you wrote, not advice. The shared terms are why the tie exists. A contender whose "only" list is **empty** is the important case: every word it has belongs to a rival too, so no rewording will separate them and one of the two skills should not exist.
 
 ## What transfers to a real model, and what doesn't
 
@@ -44,9 +68,26 @@ Because it's the half you can check on every pull request, for free, on someone 
 
 A model-in-the-loop check (`skillcheck eval`, on the roadmap) answers the question this one can't: *did the skill actually fire?* That check needs credentials, costs tokens, and is non-deterministic — so it belongs on a schedule or before a release, not on every PR. The two are complementary, and neither replaces the other.
 
+## Comparing two revisions
+
+`skillcheck diff <ref>` runs the same ranking twice — once over the corpus as it is, once over the corpus as it was at `ref` — and reports every request whose answer moved.
+
+The requests have to be *identical* on both sides, or the comparison would confound "the corpus changed" with "the question changed". Two sources satisfy that:
+
+1. **Your scenarios file**, if you keep one. The sharpest probes there are: a human wrote them in the words a user would use.
+2. **Each skill's own description**, taken from both revisions. A description is the most precise available statement of what a skill claims, so it doubles as the request it should most obviously win. When a description was edited, both wordings become probes, which asks two genuinely different questions: do the requests this skill *used to* claim still reach it, and does something else already own the ones it claims now?
+
+Description probes come only from skills present at both revisions. An added skill's own words would trivially "change hands" to it and a removed one's would trivially leave — reporting either as drift would bury the real findings under the consequences of the change you are describing in the PR title.
+
+**Why this can't cry wolf.** Every other check has to decide whether some arrangement of text is *bad*, and can be wrong about it. Drift decides nothing: it reports that an answer changed, and it changed because you changed the text that decides it. There is nothing to be wrong about. That is why it needs no thresholds and no configuration — and it is why only three outcomes fail a build (a request that changed hands between skills you did not edit, a request that stopped reaching anything, and a new error), while a narrowing lead, an intended change, and an added skill are reported and stay green.
+
+Reading the historical revision goes through `git ls-tree` and `git cat-file`, which read the local object database. Nothing is fetched, checked out or stashed, and the working tree is never modified. A ref that is not present locally — the usual cause being a shallow CI clone — is an error naming `fetch-depth: 0`, not a network call.
+
 ## Reading the output
 
-```
+<!-- verify: why "review my code changes before I commit" . cwd=tests/fixtures/bad exit=0 -->
+
+```console
 $ skillcheck why "review my code changes before I commit"
 
 request  review my code changes before I commit
@@ -56,6 +97,13 @@ terms    review, code, change, commit
   2.  grill-me   █████████░░░░░░░░░░░  46%  review code change commit
 
   ⚠ coin flip — review-me leads grill-me by only 14%
+    their descriptions tie on: bug, case, change, code, commit, edge
+    only review-me: problem, repository
+    only grill-me: issue, repo
+
+  BM25 over each skill's name + description. A deterministic model of the retrieval
+  step, not a prediction of the model's choice — read a near-tie as a real risk and a
+  clear win as "nothing in your wording is working against you".
 ```
 
 - **terms** — what's left of your request after stopwords and stemming. If a word you consider important isn't here, it isn't influencing anything.

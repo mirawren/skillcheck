@@ -42,6 +42,14 @@ jobs:
         run: npm run test:action
       - name: Rule reference matches the rules
         run: npm run docs:check
+      # Every console block in the docs is re-run and compared. The README once
+      # shipped a `why` example whose percentages had drifted from the ranking —
+      # a fabricated-looking screenshot in the one place a measurement tool
+      # cannot afford one.
+      - name: Documented examples match real output
+        run: npm run check:examples
+      - name: skillcheck passes its own rules
+        run: npm run selfcheck
 
   self-check:
     runs-on: ubuntu-latest

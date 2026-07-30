@@ -59,6 +59,8 @@
     "test:watch": "vitest",
     "docs": "npm run build && node scripts/gen-docs.mjs",
     "docs:check": "node scripts/gen-docs.mjs --check",
+    "docs:examples": "npm run build && node scripts/check-examples.mjs --update",
+    "check:examples": "node scripts/check-examples.mjs",
     "set-owner": "node scripts/set-owner.mjs",
     "check:owner": "node scripts/set-owner.mjs --check",
     "bench": "npm run build && node scripts/bench.mjs",
@@ -66,7 +68,7 @@
     "test:action": "node scripts/test-action.mjs",
     "test:release": "node scripts/test-release.mjs",
     "check:workflows": "node scripts/check-workflows.mjs",
-    "check": "npm run build && npm run typecheck && npm test && npm run check:workflows && npm run test:action && npm run test:release && npm run docs:check",
+    "check": "npm run build && npm run typecheck && npm test && npm run check:workflows && npm run test:action && npm run test:release && npm run docs:check && npm run check:examples && npm run selfcheck",
     "prepublishOnly": "npm run check"
   },
   "dependencies": {

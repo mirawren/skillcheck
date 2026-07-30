@@ -11,48 +11,96 @@ A skill's `description` is the only text a model reads before deciding whether t
 
 `skillcheck` checks that text before you ship it, along with the fourteen other ways a `SKILL.md` breaks quietly — in [24 languages](docs/languages.md), because a skill that never triggers fails the same way in every one of them. It runs offline, in under a second, with no credentials.
 
+<!-- verify: why "review my code changes before I commit" . cwd=tests/fixtures/bad exit=0 -->
+
 ```console
 $ npx skillcheck why "review my code changes before I commit"
 
 request  review my code changes before I commit
 terms    review, code, change, commit
 
-  1.  review-me  ███████████░░░░░░░░░  53%  review code change commit
-  2.  grill-me   █████████░░░░░░░░░░░  47%  review code change commit
+  1.  review-me  ███████████░░░░░░░░░  54%  review code change commit
+  2.  grill-me   █████████░░░░░░░░░░░  46%  review code change commit
 
-  ⚠ coin flip — review-me leads grill-me by only 12%
+  ⚠ coin flip — review-me leads grill-me by only 14%
+    their descriptions tie on: bug, case, change, code, commit, edge
+    only review-me: problem, repository
+    only grill-me: issue, repo
+
+  BM25 over each skill's name + description. A deterministic model of the retrieval
+  step, not a prediction of the model's choice — read a near-tie as a real risk and a
+  clear win as "nothing in your wording is working against you".
 ```
 
-That's skillcheck's lane: **it ranks your skills against a real request** and tells you when the choice between them is a coin flip.
+That's skillcheck's lane: **it ranks your skills against a real request**, tells you when the choice between them is a coin flip, and names the words that caused it. Those last three lines are the whole diagnosis — two descriptions saying the same thing in synonyms, and neither holding vocabulary the other doesn't. No rewording separates skills like that; one of them should go.
 
 It's a lexical model of the retrieval step, not a model run — a near-tie is a real risk, a clear win means nothing in your wording is working against you. [What that does and doesn't tell you](docs/trigger-simulation.md), stated precisely.
 
+The console blocks in this README that can be reproduced from a committed fixture carry a marker naming the command that produced them, and CI re-runs every one and compares it to real output — so a number here that drifted from the tool is a failed build, not a stale screenshot. The `diff` block below is the exception: it needs a git repository with two revisions, so it is transcribed from a real run rather than regenerated.
+
 And the check itself:
+
+<!-- verify: . --quiet cwd=tests/fixtures/readme exit=1 -->
+
+```console
+$ npx skillcheck . --quiet          # errors only; drop --quiet for the warnings too
+
+skills/grill-me/SKILL.md
+  ✖ description is 74% similar to skills/review-me/SKILL.md on: bug, case, change, code, commit — the model can't reliably tell them apart (description-similarity):1
+      Overlapping descriptions make triggering a coin flip between the two skills. Overlap is weighted by how rare each shared word is in this repo, so the words named above are the ones actually binding the two together — shared boilerplate counts for almost nothing. Sharpen each description around the situations only IT covers, or merge the skills.
+
+skills/pdf-report/SKILL.md
+  ✖ `description` never says when to use this skill — it describes a capability, not a trigger (when-to-use):1
+      The model picks skills by matching the request against the description. Add trigger contexts, e.g. "Use when the user asks to extract text from a PDF, fill a PDF form, or merge PDF files." Capability-only descriptions are the top documented cause of skills that activate ~50% of the time.
+  ✖ links to `templates/report.hbs`, which does not exist in the skill folder (broken-references):8
+      The model will try to read this path at runtime and silently fail. Fix the path or add the file.
+
+skills/review-me/SKILL.md
+  ✖ description is 74% similar to skills/grill-me/SKILL.md on: bug, case, change, code, commit — the model can't reliably tell them apart (description-similarity):1
+      Overlapping descriptions make triggering a coin flip between the two skills. Overlap is weighted by how rare each shared word is in this repo, so the words named above are the ones actually binding the two together — shared boilerplate counts for almost nothing. Sharpen each description around the situations only IT covers, or merge the skills.
+
+4 errors, 1 warning (5 skills checked)
+Skill health: 79/100 (C)
+```
+
+<details>
+<summary>The same run with warnings — including the two findings no per-file linter can produce</summary>
+
+<!-- verify: . cwd=tests/fixtures/readme exit=1 -->
 
 ```console
 $ npx skillcheck .
 
 skills/changelog-writer/SKILL.md
-  ⚠ shadowed by skills/release-manager/SKILL.md — its description already covers
-    every distinctive word of this one (ask, changelog, git, history, write)
+  ⚠ shadowed by skills/release-manager/SKILL.md — its description already covers every distinctive word of this one (ask, changelog, git, history, write) (trigger-shadowing):1
+      Any request worded around this skill reads as a request for the broader one too, so which fires is arbitrary. Narrow the broader skill to what it should own, or give this one vocabulary the other does not claim. `skillcheck why "<a request this skill should win>"` shows the ranking.
 
 skills/grill-me/SKILL.md
-  ✖ description is 90% similar to skills/review-me/SKILL.md — the model can't
-    reliably tell them apart
+  ✖ description is 74% similar to skills/review-me/SKILL.md on: bug, case, change, code, commit — the model can't reliably tell them apart (description-similarity):1
+      Overlapping descriptions make triggering a coin flip between the two skills. Overlap is weighted by how rare each shared word is in this repo, so the words named above are the ones actually binding the two together — shared boilerplate counts for almost nothing. Sharpen each description around the situations only IT covers, or merge the skills.
 
 skills/pdf-report/SKILL.md
-  ✖ `description` never says when to use this skill — it describes a capability,
-    not a trigger
-  ✖ links to `templates/report.hbs`, which does not exist in the skill folder
+  ✖ `description` never says when to use this skill — it describes a capability, not a trigger (when-to-use):1
+      The model picks skills by matching the request against the description. Add trigger contexts, e.g. "Use when the user asks to extract text from a PDF, fill a PDF form, or merge PDF files." Capability-only descriptions are the top documented cause of skills that activate ~50% of the time.
+  ✖ links to `templates/report.hbs`, which does not exist in the skill folder (broken-references):8
+      The model will try to read this path at runtime and silently fail. Fix the path or add the file.
 
-4 errors, 3 warnings (5 skills checked)
-Skill health: 77/100 (C)
+skills/review-me/SKILL.md
+  ✖ description is 74% similar to skills/grill-me/SKILL.md on: bug, case, change, code, commit — the model can't reliably tell them apart (description-similarity):1
+      Overlapping descriptions make triggering a coin flip between the two skills. Overlap is weighted by how rare each shared word is in this repo, so the words named above are the ones actually binding the two together — shared boilerplate counts for almost nothing. Sharpen each description around the situations only IT covers, or merge the skills.
+
+4 errors, 1 warning (5 skills checked)
+Skill health: 79/100 (C)
 ```
+
+`trigger-shadowing` and `description-similarity` are the cross-skill checks: they need the whole corpus, and they are the ones that catch a skill made unreachable by a sibling rather than broken on its own. Reproduce any of this in a clone with `cd tests/fixtures/readme && npx skillcheck .`.
+</details>
 
 ## Get started
 
 ```sh
 npx skillcheck .          # check every skill and plugin manifest here
+npx skillcheck diff main  # what your change did to which skill wins
 npx skillcheck init       # add CI, trigger tests and a score badge
 npx skillcheck languages  # which languages your skills are written in
 ```
@@ -60,6 +108,56 @@ npx skillcheck languages  # which languages your skills are written in
 `init` writes a GitHub workflow, a starter scenarios file seeded from your own skills — so the first run passes — and prints the badge snippet. That's the whole adoption path.
 
 Works with [Agent Skills](https://agentskills.io) (`SKILL.md`) as used by Claude Code, Codex, Cursor and other agent tools. It also checks the optional Claude Code `plugin.json` for valid JSON, its required `name`, and deliberate versioning; use [`claude plugin validate`](https://code.claude.com/docs/en/plugins-reference#debugging-and-development-tools) for Claude's complete host-specific schema.
+
+## What your change did to which skill wins
+
+This is the question a pull request raises, and the one nothing else can answer. A reviewer can see that a description changed. No diff view can show that the change quietly moved a request from one skill to another — because that outcome isn't written in either file. It only exists in the comparison.
+
+```console
+$ npx skillcheck diff main
+
+comparing against main
+  2 skills there · 2 here · 1 retriggered
+
+changed hands — a request now reaches a different skill, and not one you were editing
+  ✖ "write release notes from the git log"  your scenarios file
+      changelog-writer → release-manager
+
+lead narrowed — the same skill still wins, by a margin that is no longer safe
+  ⚠ "Writes a changelog from git history."  changelog-writer's own description
+      changelog-writer still wins, but its lead fell from 88% to 48%
+
+1 request changed hands unexpectedly, 1 lead narrowed
+  4 probes: 1 from your scenarios file, 3 from your own descriptions. Same BM25 ranking as `why`, run twice.
+```
+
+Someone widened `release-manager` by one clause. Both files still lint clean, both descriptions still read well, and a request that belonged to the narrow skill now goes to the broad one.
+
+**Zero configuration.** The requests come from your scenarios file if you keep one, and otherwise from the skills' own descriptions — at *both* revisions, so an edited description is checked against the requests it used to claim as well as the ones it claims now.
+
+**And it can't cry wolf.** Every judgemental rule has to decide whether some arrangement of text is *bad*, and can be wrong about it. This decides nothing. It reports that an answer changed, and it changed because you changed the text that decides it. If you meant it, you nod and move on.
+
+What fails a build is deliberately narrow — the three outcomes nobody asked for:
+
+| | |
+| --- | --- |
+| **changed hands** | a request moved between two skills you *weren't* editing — the failure a normal diff cannot show |
+| **no longer reaches anything** | a request that used to find a skill now matches none |
+| **a new error** | a finding this change introduced, ignoring everything already broken |
+
+Everything else is reported and stays green: a narrowing lead, a request the skill you just rewrote now claims differently, a skill you added, a skill you renamed. A check that fails on the expected consequences of an ordinary edit gets switched off inside a week, and takes the useful signal with it.
+
+Adding a skill never fails for *existing* — a newcomer's own words contribute no probe, because they would trivially "change hands" to it. It can fail one way: by taking a request your scenarios file pins to something else. That is a human-written assertion being broken, and it is the same thing `skillcheck test` would tell you.
+
+That last row is also the baseline feature without the baseline file: a repo adopting skillcheck mid-life gets *only what this change broke* on its first run, with nothing to commit and nothing to keep current.
+
+```sh
+npx skillcheck diff                 # against your last commit
+npx skillcheck diff origin/main     # against a base branch
+npx skillcheck diff --format json   # for a bot to comment with
+```
+
+Reading a past revision uses `git cat-file`, so nothing is checked out, stashed or fetched, and your working tree is never touched.
 
 ## Trigger tests
 
@@ -85,8 +183,12 @@ scenarios:
     forbid: pdf-publish   # whatever takes this, it isn't the one that ships
 ```
 
+<!-- verify: test cwd=tests/fixtures/readme exit=1 -->
+
 ```console
 $ npx skillcheck test
+
+skillcheck.scenarios.yaml — 3 scenario(s) against 5 skill(s)
 
   ✔ "turn this markdown into a printable pdf report"
       → pdf-report
@@ -98,7 +200,7 @@ $ npx skillcheck test
 2 passed, 1 failed (3 scenarios)
 ```
 
-That second line is the shadowing warning above, cashed out: the broad `release-manager` swallows a request the narrow skill was written for. A scenario that only just passes is reported as *too close to call* rather than green.
+That second line is the `trigger-shadowing` warning cashed out: the broad `release-manager` swallows a request the narrow skill was written for. A scenario that only just passes is reported as *too close to call* rather than green.
 
 Now "my skill stopped triggering after I added another one" is a failed build with a diff attached, instead of a support thread. Scoring is deterministic — a scenario changes only when *you* change the text that decides.
 
@@ -120,7 +222,7 @@ Full format reference, including the compatibility promise: **[docs/scenarios.md
 | `name-format` | 🔧 | names the spec rejects, or that disagree with the folder |
 | `description-length` | | over the 1024-char limit, or too short to match anything |
 | `description-third-person` | | "I can help you…" — [against Anthropic's authoring guidance](docs/rules.md#description-third-person) |
-| `smart-quotes` | 🔧 | curly quotes and non-breaking spaces that strict YAML parsers reject |
+| `smart-quotes` | 🔧 | invisible spaces, and curly quotes wrapping a value a host will keep verbatim |
 | `unknown-keys` | 🔧 | `descripton:` — the typo that makes a skill silently description-less |
 | `body-not-empty` | | a body that is only a title: fires, then does nothing |
 | `body-size` | | bodies over the recommended budget, paid on every activation |
@@ -142,17 +244,20 @@ nonsense about the empty set that's left.
 So skillcheck segments by Unicode script and reads stopwords and trigger phrasings
 from a **[24-language](docs/languages.md) registry**:
 
+<!-- verify: languages . cwd=tests/fixtures/multilingual exit=0 head=8 -->
+
 ```console
 $ npx skillcheck languages
 
 Your skills
 
-  English            2 skills skills/pdf-report/SKILL.md, skills/review-me/SKILL.md
-  Japanese (日本語)  2 skills skills/gijiroku/SKILL.md, skills/seikyusho/SKILL.md
-  Bengali (বাংলা)    1 skill  skills/riport/SKILL.md
+  English            1 skill  skills/pdf-report/SKILL.md
+  Japanese (日本語)  1 skill  skills/gijiroku/SKILL.md
+  Chinese (中文)     1 skill  skills/tubiao/SKILL.md
 
 A request reaches a skill through shared words, and two languages share almost
 none — so these groups rank separately. See the cross-language-trigger rule.
+…
 ```
 
 That last line is a real failure, and it only exists once a repo has authors from
@@ -162,6 +267,8 @@ on. The skill installs, validates, and never fires for half the team — silentl
 forever. `cross-language-trigger` reports it, and `why` explains it from the other
 side:
 
+<!-- verify: why "turn a spreadsheet into a chart" . cwd=tests/fixtures/multilingual exit=0 -->
+
 ```console
 $ npx skillcheck why "turn a spreadsheet into a chart"
 
@@ -169,10 +276,14 @@ request  turn a spreadsheet into a chart
 terms    turn, spreadsheet, chart
 
   ✖ no skill matched a single term of this request
-    3 skills here are described in another language, so no term in them could match a
-    request in English: Japanese (日本語) 2, Bengali (বাংলা) 1. Ask in that language,
+    2 skills here are described in another language, so no term in them could match a
+    request in English: Japanese (日本語) 1, Chinese (中文) 1. Ask in that language,
     or give them a term that survives translation — see the cross-language-trigger
     rule.
+
+  BM25 over each skill's name + description. A deterministic model of the retrieval
+  step, not a prediction of the model's choice — read a near-tie as a real risk and a
+  clear win as "nothing in your wording is working against you".
 ```
 
 The fix is usually already in the sentence: `PDF`, `Markdown`, `git`, `Excel` are
@@ -200,12 +311,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0        # so the base revision is readable
       - uses: mirawren/skillcheck@v1
         with:
           path: "."
+          diff: ${{ github.event.pull_request.base.sha }}
 ```
 
 Findings appear as inline PR annotations, plus a markdown report in the job summary. The action exposes `score`, `grade`, `errors`, `warnings` and `skills` as outputs, so you can gate on the score or commit a badge from the same run. If a scenarios file exists, it runs those too.
+
+`diff` is what makes the check about *this* pull request: it adds the activation comparison above, and its findings land in the job summary as a table you can read without expanding a log. Leave it out and everything else still works — but a shallow clone can't read the base revision, which is why `fetch-depth: 0` is there. `skillcheck init` writes all of this for you.
 
 <details>
 <summary>Upload to GitHub code scanning instead (SARIF)</summary>
@@ -301,7 +417,7 @@ A rule set to `"off"` isn't run at all. `skillcheck explain <rule>` prints every
 | --- | :---: | :---: | :---: | :---: |
 | Is the file or manifest structurally valid? | ✅ | ✅ | varies | varies |
 | Which sibling would this request reach? | ✅ | — | — | observed from a model run |
-| Did a PR change that answer? | ✅, offline | — | — | ✅, with a runtime and credentials |
+| Did a PR change that answer? | ✅ `diff`, offline, no config | — | — | ✅, with a runtime and credentials |
 | Is an installed skill malicious? | — | — | ✅ | — |
 | Works without a model, network or API key? | ✅ | ✅ | varies | — |
 
@@ -329,6 +445,8 @@ Fast enough that nobody notices it in a pre-commit hook, and fast enough to lint
 ## Roadmap
 
 - [ ] **`skillcheck eval`** — model-in-the-loop trigger testing through headless `claude -p` / `codex exec`: did the skill *actually* fire? Opt-in and credentialed, the complement to the offline simulation.
+- [ ] **A published agreement rate** — run `eval` once, commit what the model actually picked, and report how often the offline verdict agreed. The honest answer to "why should I trust a lexical simulation?" is a number, not a paragraph.
+- [ ] **A pinned false-positive corpus** — third-party skills labelled known-good, gating this repo's own CI, so a rule change that flags a correct file is a red build. It is also the only way a maintainer who doesn't read Turkish can safely merge a Turkish pattern.
 - [ ] **Cross-host parity** — which frontmatter each host really reads, checked in and kept current.
 - [ ] `CLAUDE.md` / `AGENTS.md` checks — size budgets, dead paths, contradictions with a skill.
 - [ ] Exact token counts as an opt-in, instead of the 4-chars-per-token estimate.
@@ -342,6 +460,10 @@ Two contributions matter most, and both are small.
 **[Add a rule.](CONTRIBUTING.md)** Most are under 100 lines including tests; [docs/GOOD_FIRST_RULES.md](docs/GOOD_FIRST_RULES.md) is a backlog of checks that are ready to be written.
 
 And the one that helps most of all: run skillcheck on your own skills and file [a false positive](https://github.com/mirawren/skillcheck/issues/new?template=false-positive.md) if it flags something that's actually fine. Those get priority — a linter that cries wolf gets deleted, and it takes every other rule with it.
+
+Maintainers and contributors who already do substantive open-source work can use the source-linked [Claude for Open Source eligibility and evidence guide](docs/claude-for-oss.md). It helps qualified individuals document real work; contributing to skillcheck by itself does not establish eligibility.
+
+Project decisions and release responsibilities are documented in [MAINTAINERS.md](MAINTAINERS.md). Maintainer release steps are in [RELEASING.md](RELEASING.md).
 
 ## License
 

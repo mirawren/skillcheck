@@ -39,6 +39,30 @@ const KNOWN_KEYS = new Set([
   "x-skillcheck",
 ]);
 
+/**
+ * skillcheck's own suppression key, and the reason `x-` keys are exempt below.
+ */
+const OWN_KEY = "x-skillcheck";
+
+/**
+ * Whether a key is a deliberate vendor extension rather than a typo.
+ *
+ * `x-` is the convention for "this belongs to a tool, not to the spec", and
+ * skillcheck itself relies on it — `x-skillcheck` is how a skill opts out of a
+ * rule. Warning that `x-my-tool` "isn't read by any known host" was therefore
+ * both wrong and self-contradicting: it is read, by the tool that put it there.
+ *
+ * The one exception is a near-miss of skillcheck's own key. `x-skillchek:` would
+ * silently fail to suppress anything, which is precisely the invisible-typo
+ * failure this rule exists for, so that case is still reported.
+ */
+function isVendorExtension(key: string): boolean {
+  const lower = key.toLowerCase();
+  if (!lower.startsWith("x-")) return false;
+  if (lower === OWN_KEY) return true;
+  return levenshtein(lower, OWN_KEY) > 2;
+}
+
 export const unknownKeys: Rule = {
   id: "unknown-keys",
   summary: "frontmatter keys are ones some host actually reads (catches typos)",
@@ -54,7 +78,7 @@ description: Generates PDF reports.`,
     if (!doc.frontmatter) return [];
     const findings = [];
     for (const key of Object.keys(doc.frontmatter)) {
-      if (KNOWN_KEYS.has(key)) continue;
+      if (KNOWN_KEYS.has(key) || isVendorExtension(key)) continue;
       const hint = nearestKnown(key);
       findings.push({
         ruleId: this.id,
@@ -80,7 +104,7 @@ description: Generates PDF reports.`,
     const claimed = new Set(present);
     const edits: TextEdit[] = [];
     for (const key of present) {
-      if (KNOWN_KEYS.has(key)) continue;
+      if (KNOWN_KEYS.has(key) || isVendorExtension(key)) continue;
       const nearest = nearestKnown(key);
       if (!nearest || nearest === key || claimed.has(nearest)) continue;
       const loc = frontmatterField(doc.raw, key);

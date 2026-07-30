@@ -201,15 +201,35 @@ describe("no-placeholders", () => {
 });
 
 describe("smart-quotes", () => {
-  it("flags curly punctuation inside the frontmatter only", () => {
-    const raw = '---\nname: demo\ndescription: “Generates reports”\n---\n\n# Body — an em dash is fine here\n';
+  it("flags curly quotes that wrap a value, which a host would keep", () => {
+    const raw = `---\nname: demo\ndescription: \u201cGenerates reports\u201d\n---\n\n# Body\n`;
     const findings = smartQuotes.check(doc({ raw }), emptyCtx);
     expect(findings).toHaveLength(1);
-    expect(findings[0].message).toContain("2 typographic");
+    expect(findings[0].message).toContain("curly quotes");
+  });
+
+  it("flags an invisible space, the one character an author cannot see", () => {
+    const raw = `---\nname:\u00a0demo\ndescription: Generates reports. Use when asked.\n---\n\n# Body\n`;
+    const findings = smartQuotes.check(doc({ raw }), emptyCtx);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].message).toContain("invisible space");
+  });
+
+  it("stays silent on prose punctuation, including its own documentation", () => {
+    // This rule reported a warning on the `when-to-use` rule's documented
+    // "Passes" example, because the example contains an em dash. An em dash in a
+    // plain YAML scalar is portable to every loader; there is no failure to name.
+    const raw = `---\nname: pdf-report\ndescription: Manipulates PDF files \u2014 extract text, fill forms. Use when the user asks to read a PDF.\n---\n\n# Body\n`;
+    expect(smartQuotes.check(doc({ raw }), emptyCtx)).toEqual([]);
+  });
+
+  it("stays silent on a curly apostrophe in ordinary prose", () => {
+    const raw = `---\nname: demo\ndescription: Don\u2019t use this for slides. Use when the user asks for a report.\n---\n\n# Body\n`;
+    expect(smartQuotes.check(doc({ raw }), emptyCtx)).toEqual([]);
   });
 
   it("ignores a file with no frontmatter", () => {
-    expect(smartQuotes.check(doc({ raw: "# Just prose — with a dash\n" }), emptyCtx)).toEqual([]);
+    expect(smartQuotes.check(doc({ raw: "# Just prose \u2014 with a dash\n" }), emptyCtx)).toEqual([]);
   });
 });
 

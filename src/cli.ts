@@ -12,7 +12,8 @@ import {
   loadBaseline,
   serializeBaseline,
 } from "./baseline.js";
-import { ConfigError, loadConfig } from "./config.js";
+import { ConfigError, globToMatcher, loadConfig, type SkillcheckConfig } from "./config.js";
+import { compareCorpora, driftFailed } from "./drift.js";
 import { type FileFixResult, fixableRules, fixDocs, MAX_PASSES } from "./fix.js";
 import { collectDocs, evaluate, suppressedRules } from "./index.js";
 import { runInit } from "./init.js";
@@ -22,20 +23,23 @@ import {
   LOW_CONFIDENCE,
 } from "./languages/index.js";
 import { buildIndex, languageOf, matchPrompt } from "./match.js";
-import { displayPath } from "./paths.js";
+import { displayPath, toPosix } from "./paths.js";
 import { displayWidth, padDisplay } from "./script.js";
 import {
   type Format,
   render,
+  renderDrift,
   renderExplain,
   renderScenarioResults,
   renderTrigger,
 } from "./report.js";
+import { readFileAtRef, readSkillsAtRef, RevisionError } from "./revision.js";
 import { catalog, rules } from "./rules/index.js";
 import { computeScore } from "./score.js";
 import {
   findScenarioFile,
   loadScenarios,
+  parseScenarios,
   runScenarios,
   SCENARIO_FILENAMES,
   ScenarioError,
@@ -64,6 +68,7 @@ const HELP = `skillcheck — activation preflight for agent skills
 Usage
   skillcheck [paths...] [options]        check skills and plugin manifests (default)
   skillcheck why "<request>" [paths...]  show which skill a request would reach
+  skillcheck diff [<ref>] [paths...]     what this change did to which skill wins
   skillcheck test [paths...]             run trigger scenarios from skillcheck.scenarios.yaml
   skillcheck explain <rule>              why a rule exists, with examples
   skillcheck init [dir]                  add CI, starter trigger tests and a badge
@@ -94,13 +99,14 @@ Options
 
 Exit codes
   0  clean (and warnings within --max-warnings)
-  1  errors found, warnings over the limit, or a failing scenario
+  1  errors found, warnings over the limit, a failing scenario, or unintended drift
   2  bad usage, bad config, or an internal error
 `;
 
 type Command =
   | "check"
   | "why"
+  | "diff"
   | "test"
   | "explain"
   | "init"
@@ -109,7 +115,7 @@ type Command =
   | "help"
   | "version";
 
-const COMMANDS = new Set(["check", "why", "test", "explain", "init", "rules", "languages"]);
+const COMMANDS = new Set(["check", "why", "diff", "test", "explain", "init", "rules", "languages"]);
 const FORMATS = new Set(["pretty", "json", "github", "sarif", "badge", "markdown"]);
 
 interface Args {
@@ -254,6 +260,8 @@ export function runCli(argv: string[], io: CliIO = nodeIo): number {
         return commandInit(args, io);
       case "why":
         return commandWhy(args, io);
+      case "diff":
+        return commandDiff(args, io);
       case "test":
         return commandTest(args, io);
       default:
@@ -261,7 +269,12 @@ export function runCli(argv: string[], io: CliIO = nodeIo): number {
     }
   } catch (err) {
     if (err instanceof UsageError) return usage(io, err);
-    if (err instanceof ConfigError || err instanceof BaselineError || err instanceof ScenarioError) {
+    if (
+      err instanceof ConfigError ||
+      err instanceof BaselineError ||
+      err instanceof ScenarioError ||
+      err instanceof RevisionError
+    ) {
       io.err(`skillcheck: ${err.message}\n`);
       return 2;
     }
@@ -495,9 +508,170 @@ function commandWhy(args: Args, io: CliIO): number {
     return 2;
   }
 
-  const report = matchPrompt(buildIndex(skills), prompt);
-  io.out(`${renderTrigger(report, args.format === "json" ? "json" : "pretty")}\n`);
+  const index = buildIndex(skills);
+  const report = matchPrompt(index, prompt);
+  io.out(`${renderTrigger(report, args.format === "json" ? "json" : "pretty", index)}\n`);
   return 0;
+}
+
+// ──────────────────────────────────────────────────────────── diff ──────────
+
+/**
+ * The revision `diff` compares against when the user names none.
+ *
+ * `HEAD` answers "what have I changed since my last commit", which is the
+ * question at the keyboard. In CI the answer wanted is "what does this pull
+ * request change", so the base ref is passed explicitly — the Action does it.
+ */
+const DEFAULT_DIFF_REF = "HEAD";
+
+/**
+ * `skillcheck diff [<ref>]` — the comparison every other command can't make.
+ *
+ * A ref looks exactly like a path, so telling them apart is a guess. The rule
+ * here is deliberately dumb and predictable: the first positional is a ref
+ * unless it exists on disk, in which case it is a path and the ref defaults.
+ * Guessing the other way round would silently compare against the wrong thing,
+ * which for this command is worse than an error.
+ */
+function commandDiff(args: Args, io: CliIO): number {
+  const first = args.positional[0];
+  const looksLikePath = first !== undefined && existsSync(first);
+  const ref = first !== undefined && !looksLikePath ? first : DEFAULT_DIFF_REF;
+  const paths = pathsOf(args, looksLikePath || first === undefined ? 0 : 1);
+  requireExisting(paths);
+
+  const config = loadConfig(args.config).config;
+  const after = collectDocs(paths, config).skills;
+  const before = readSkillsAtRef(ref, paths).filter(inScope(config));
+
+  // A repo with no skills at either revision has nothing to compare, which is
+  // not a usage error — it is the state of every repo the moment after
+  // `skillcheck init` runs, and failing there would make the first pull request
+  // after adopting the tool red for no reason.
+  if (before.length === 0 && after.length === 0) {
+    io.out(
+      pc.dim(`no SKILL.md under ${paths.join(", ")}, at ${ref} or now — nothing to compare\n`),
+    );
+    return 0;
+  }
+
+  // Scenario prompts are the sharpest probes there are, so they're used when the
+  // repo has them — but an unparseable file must not take the whole comparison
+  // down, because drift is still fully answerable from the descriptions alone.
+  let scenarios: ReturnType<typeof loadScenarios> = [];
+  const scenarioFile = findScenarioFile(args.scenarios);
+  if (scenarioFile) {
+    try {
+      scenarios = loadScenarios(scenarioFile);
+    } catch (err) {
+      io.err(pc.yellow(`skillcheck: ignoring ${displayPath(scenarioFile)} — ${(err as Error).message}\n`));
+    }
+    scenarios = assertedAtBothRevisions(scenarios, scenarioFile, ref, io);
+  }
+
+  const report = compareCorpora({
+    ref,
+    before,
+    after,
+    scenarios,
+    findingsBefore: evaluate(before, [], historicalConfig(config)).findings,
+    findingsAfter: evaluate(after, [], historicalConfig(config)).findings,
+  });
+  const format =
+    args.format === "json" || args.format === "markdown" || args.format === "github"
+      ? args.format
+      : "pretty";
+  io.out(`${renderDrift(report, format)}\n`);
+  if (args.summary) emitStepSummary(io, renderDrift(report, "markdown"));
+
+  return driftFailed(report) ? 1 : 0;
+}
+
+/**
+ * Keep only the scenarios that were already asserted at `ref`.
+ *
+ * A prompt written in the same change has no answer at the base revision, and
+ * ranking it there invents one. Adding a skill *together with its scenario* — the
+ * workflow `skillcheck init` scaffolds — therefore failed the build: the new
+ * prompt was ranked against the old corpus, some incumbent "won" a request that
+ * did not exist yet, and the report called it a request changing hands.
+ *
+ * This is the same rule already applied to description probes, which come only
+ * from skills present at both revisions, and for the same reason: a comparison
+ * needs a question both sides were asked. What the new prompt asserts is still
+ * checked — by `skillcheck test`, against the corpus it was written for.
+ */
+function assertedAtBothRevisions(
+  scenarios: readonly ReturnType<typeof loadScenarios>[number][],
+  scenarioFile: string,
+  ref: string,
+  io: CliIO,
+): ReturnType<typeof loadScenarios> {
+  if (scenarios.length === 0) return [...scenarios];
+
+  let before: string | null = null;
+  try {
+    before = readFileAtRef(ref, scenarioFile);
+  } catch {
+    // The file's history is unreadable — fall back to comparing nothing from it
+    // rather than to inventing "before" answers.
+    return [];
+  }
+  if (before === null) return [];
+
+  let baseline: ReturnType<typeof loadScenarios>;
+  try {
+    baseline = parseScenarios(before, `${displayPath(scenarioFile)}@${ref}`);
+  } catch {
+    return [];
+  }
+
+  const asserted = new Set(baseline.map((s) => s.prompt.trim()));
+  const kept = scenarios.filter((s) => asserted.has(s.prompt.trim()));
+  const added = scenarios.length - kept.length;
+  if (added > 0) {
+    io.out(
+      pc.dim(
+        `  ${plural(added, "scenario")} added in this change ${added === 1 ? "is" : "are"} not compared — ` +
+          `${added === 1 ? "it has" : "they have"} no answer at ${ref}. \`skillcheck test\` checks ${added === 1 ? "it" : "them"}.\n`,
+      ),
+    );
+  }
+  return kept;
+}
+
+/** `1 scenario` / `2 scenarios`. */
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+/**
+ * The config to evaluate both revisions under, for the "what did this change
+ * introduce" half of the report.
+ *
+ * `broken-references` is switched off for the comparison, and only there. It
+ * asks the filesystem whether a linked file exists, and the filesystem only
+ * holds the *current* revision — so the historical side would be answered with
+ * today's files and report every such finding as either new or fixed at random.
+ * Running the check normally still reports it; what's suppressed is a claim
+ * about it having *changed*, which this comparison genuinely cannot make.
+ */
+function historicalConfig(config: SkillcheckConfig): SkillcheckConfig {
+  return { ...config, rules: { ...config.rules, "broken-references": "off" } };
+}
+
+/**
+ * The same `ignore` globs {@link collectDocs} applies, so a skill excluded from
+ * the check isn't dragged back in by the historical side of the comparison.
+ */
+function inScope(config: ReturnType<typeof loadConfig>["config"]): (doc: SkillDoc) => boolean {
+  const matchers = (config.ignore ?? []).map(globToMatcher);
+  if (matchers.length === 0) return () => true;
+  return (doc) => {
+    const rel = toPosix(doc.file);
+    return !matchers.some((m) => m(rel));
+  };
 }
 
 // ──────────────────────────────────────────────────────────── test ──────────

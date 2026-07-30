@@ -90,6 +90,23 @@ export function fixText(
     );
     if (output === text) break; // nothing applied (all overlapped or no-ops)
 
+    /**
+     * Never hand back text that parses worse than what came in.
+     *
+     * This is the backstop for the whole `--fix` promise, and it exists because
+     * the promise was broken: `smart-quotes` replaced the curly quotes wrapping
+     * `“Runs the "fast" suite…”` with ASCII ones and produced
+     * `"Runs the "fast" suite…"` — a valid, loadable file turned into one no host
+     * can parse, written to disk, by a fixer whose own documentation says a fix
+     * that can break a working file has no business being called safe.
+     *
+     * The individual fixer is fixed too, but a rule-by-rule guarantee is only as
+     * good as the next fixer somebody writes. Checking the *outcome* makes the
+     * guarantee structural: a pass that introduces a parse error is discarded
+     * whole, and the file is left exactly as the author wrote it.
+     */
+    if (!doc.parseError && parseSkillText(file, output).parseError) break;
+
     // Attribute the change to the rules whose edits survived this pass.
     const survivors = applySurvivors(text, edits);
     for (const id of survivors) fixedRuleIds.add(id);

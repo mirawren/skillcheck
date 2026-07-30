@@ -151,7 +151,7 @@ Detection, per-language stopwords, and trigger-phrase recognition for
 | `bn` | Bengali | বাংলা | Brahmic | 10 | ✅ |
 | `de` | German | Deutsch | Latin | 11 | ✅ |
 | `el` | Greek | Ελληνικά | Greek | 10 | ✅ |
-| `en` | English | English | Latin | 11 | ✅ |
+| `en` | English | English | Latin | 15 | ✅ |
 | `es` | Spanish | Español | Latin | 14 | ✅ |
 | `fa` | Persian | فارسی | Arabic | 10 | ✅ |
 | `fr` | French | Français | Latin | 14 | ✅ |

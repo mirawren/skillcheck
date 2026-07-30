@@ -45,6 +45,19 @@ export { applyEdits, fixDocs, fixText, fixableRules } from "./fix.js";
 export type { FileFixResult, FixOutcome } from "./fix.js";
 export { runInit } from "./init.js";
 export type { InitOptions, InitResult } from "./init.js";
+export { compareCorpora, buildProbes, skillChanges, driftFailed } from "./drift.js";
+export type {
+  CompareInput,
+  DriftKind,
+  DriftReport,
+  FindingChange,
+  Probe,
+  ProbeDrift,
+  ProbeSource,
+  SkillChange,
+} from "./drift.js";
+export { readSkillsAtRef, repoRoot, resolveRef, RevisionError } from "./revision.js";
+export { proseLines } from "./markdown.js";
 
 /** Frontmatter key skills use to suppress specific rules on themselves. */
 const SUPPRESS_KEY = "x-skillcheck";

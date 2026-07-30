@@ -14,7 +14,7 @@
 | [`description-similarity`](#description-similarity) |  | no two skills have near-identical descriptions (trigger ambiguity) |
 | [`trigger-shadowing`](#trigger-shadowing) |  | no broader skill already covers this skill's own defining words |
 | [`cross-language-trigger`](#cross-language-trigger) |  | in a multilingual repo, every skill can be reached from the other languages in it |
-| [`smart-quotes`](#smart-quotes) | ✅ | frontmatter uses plain ASCII, not curly quotes / typographic dashes |
+| [`smart-quotes`](#smart-quotes) | ✅ | frontmatter has no invisible spaces, and no value wrapped in curly quotes |
 | [`body-not-empty`](#body-not-empty) |  | body has actual instructional content, not just a title |
 | [`body-size`](#body-size) |  | body stays inside the spec's recommended budget (<500 lines, <~5k tokens) |
 | [`broken-references`](#broken-references) |  | relative links in the body point at files that actually exist |
@@ -188,11 +188,11 @@ description: Routine pre-commit review of staged changes for style and obvious b
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `warnAt` | number | `0.55` | Dice coefficient at which a pair is reported as a warning. |
-| `errorAt` | number | `0.75` | Dice coefficient at which a pair becomes an error. |
+| `warnAt` | number | `0.5` | Rarity-weighted overlap at which a pair is reported as a warning. Shared words count for as much as they are rare in this repo, so boilerplate barely moves it. |
+| `errorAt` | number | `0.7` | Rarity-weighted overlap at which a pair becomes an error. |
 
 ```json
-{ "options": { "description-similarity": { "warnAt": 0.55, "errorAt": 0.75 } } }
+{ "options": { "description-similarity": { "warnAt": 0.5, "errorAt": 0.7 } } }
 ```
 
 `skillcheck explain description-similarity` prints this from the terminal.
@@ -269,22 +269,22 @@ description: Markdown から PDF レポートを生成します。PDF の作成�
 
 ## smart-quotes
 
-> frontmatter uses plain ASCII, not curly quotes / typographic dashes
+> frontmatter has no invisible spaces, and no value wrapped in curly quotes
 
 **Fixable** — `skillcheck --fix` repairs the mechanical cases.
 
-Editors and docs tools silently curl quotes and dashes in pasted prose. A curly quote is not a YAML string delimiter, so a strict loader either errors or reads the quote as part of the value — and the same skill that loads fine in one host fails in another. Non-breaking spaces are worse: invisible, and they change the text the model matches on.
+A no-break space is not whitespace to a YAML parser, so it either stays inside the value or breaks the indentation — and it is invisible in every editor and diff, so it cannot be debugged by looking. Curly quotes wrapping a value fail the same way: the value looks quoted, but the marks are part of the string, so the host stores a description the author never wrote. Curly punctuation inside prose — an apostrophe, a dash, an ellipsis — is portable and is deliberately not reported.
 
 **Trips on**
 
 ```yaml
-description: “Generates reports” — use when asked for a summary.
+description: “Generates PDF reports. Use when the user asks for a PDF.”
 ```
 
 **Passes**
 
 ```yaml
-description: "Generates reports - use when asked for a summary."
+description: "Generates PDF reports. Use when the user asks for a PDF."
 ```
 
 `skillcheck explain smart-quotes` prints this from the terminal.

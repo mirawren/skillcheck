@@ -58,6 +58,7 @@ const BASE_ENV = {
   SKILLCHECK_MAX_WARNINGS: "",
   SKILLCHECK_FIX: "false",
   SKILLCHECK_SUMMARY: "true",
+  SKILLCHECK_DIFF: "",
 };
 
 let failures = 0;
@@ -91,6 +92,7 @@ function check(label, { step, env, expect }) {
 
 const CHECK = "Run skillcheck";
 const TEST = "Run trigger scenarios";
+const DIFF = "Compare activation against the base revision";
 
 console.log(`action.yml under ${execFileSync(BASH, ["--version"]).toString().split("\n")[0]}\n`);
 
@@ -155,6 +157,41 @@ check("check step omits --summary when disabled", {
   step: CHECK,
   env: { SKILLCHECK_SUMMARY: "false" },
   expect: ["--yes", `skillcheck@${actionVersion}`, ".", "--format", "github"],
+});
+
+// The drift step. Its ref is a commit sha in practice, but it must survive being
+// a branch name with a slash — `origin/main` is what people type — and it has to
+// stay one argument.
+check("diff step passes the ref, the format and the summary", {
+  step: DIFF,
+  env: { SKILLCHECK_DIFF: "origin/main" },
+  expect: [
+    "--yes",
+    `skillcheck@${actionVersion}`,
+    "diff",
+    "origin/main",
+    ".",
+    "--format",
+    "github",
+    "--summary",
+  ],
+});
+
+check("diff step forwards config, so both revisions see the same skills", {
+  step: DIFF,
+  env: { SKILLCHECK_DIFF: "abc123", SKILLCHECK_CONFIG: "my dir/skillcheck.config.json" },
+  expect: [
+    "--yes",
+    `skillcheck@${actionVersion}`,
+    "diff",
+    "abc123",
+    ".",
+    "--format",
+    "github",
+    "--summary",
+    "--config",
+    "my dir/skillcheck.config.json",
+  ],
 });
 
 rmSync(work, { recursive: true, force: true });

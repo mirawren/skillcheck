@@ -38,7 +38,18 @@ const B = 0.75;
 /** `name` is shown to the model alongside the description, so it counts twice. */
 const NAME_WEIGHT = 2;
 
-/** Below this share of the request's terms, the top skill isn't really a match. */
+/**
+ * Below this share of the request's *matchable* terms, the top skill isn't
+ * really a match.
+ *
+ * "Matchable" is load-bearing — see {@link matchPrompt}. Measured against every
+ * term instead, this threshold reported a sole, unambiguous winner as "no skill
+ * covers this request": ask "help me set up a new webhook" of a repo whose
+ * webhook skill is the only candidate, and `help`, `set` and `new` — words no
+ * description contains, and none ever will — outvoted the one word that decided
+ * the ranking. The more naturally a request was phrased, the more likely the
+ * failure, which is the exact opposite of the advice in docs/trigger-simulation.md.
+ */
 export const MIN_COVERAGE = 0.34;
 
 /** Relative gap under which first and second place are a coin flip. */
@@ -55,6 +66,16 @@ export interface IndexedSkill {
   length: number;
   /** Description-only terms, for the pairwise similarity check. */
   descTerms: Set<string>;
+  /**
+   * Σ idf over {@link descTerms} — how much *distinguishing* vocabulary this
+   * description holds, as opposed to how many words.
+   *
+   * Precomputed here rather than in the similarity rule because idf needs the
+   * finished postings map, and the rule would otherwise recompute it per
+   * candidate pair: quadratic in the corpus, on the one code path a marketplace
+   * repo exercises hardest.
+   */
+  descWeight: number;
   /** The language its description is written in, detected once and reused. */
   language: Detection;
 }
@@ -89,10 +110,31 @@ export interface TriggerReport {
   terms: string[];
   /** Every skill that matched at least one term, best first. */
   matches: TriggerMatch[];
+  /**
+   * The top skill plus every skill within {@link CLOSE_MARGIN} of it — the set
+   * that is genuinely competing for this request.
+   *
+   * `margin` compares first place to second, which is the right question when
+   * two skills collide and the wrong one when several do: a ten-way tie reports
+   * a 0% gap between the arbitrary two that sorted highest, and says nothing
+   * about the other eight. Reporting the block is what makes a real collision in
+   * a large repo legible instead of merely detected.
+   */
+  contenders: TriggerMatch[];
   /** `(top − second) / top`, or 1 when only one skill matched. */
   margin: number;
-  /** Share of request terms the top skill matched, 0–1. */
+  /**
+   * Share of the request's *matchable* terms the top skill matched, 0–1 — where
+   * matchable means "occurs in at least one skill in this repo". See
+   * {@link matchPrompt}.
+   */
   coverage: number;
+  /**
+   * Request terms no skill in the repo contains, so nothing could have matched
+   * them. Reported because they are the honest answer to "why is my whole
+   * sentence not in the terms list?".
+   */
+  unmatchable: string[];
   verdict: Verdict;
   /** The language the request itself is written in. */
   language: Detection;
@@ -171,6 +213,8 @@ function indexOne(doc: SkillDoc): IndexedSkill {
     tf,
     length,
     descTerms: termSet(description, language.pack),
+    // Filled in by buildIndex, once idf is answerable.
+    descWeight: 0,
     language,
   };
 }
@@ -192,13 +236,23 @@ export function buildIndex(skills: readonly SkillDoc[]): TriggerIndex {
       else postings.set(term, [i]);
     }
   });
-  return {
+  const index: TriggerIndex = {
     skills: indexed,
     postings,
     byFile,
     positionOf,
     avgLength: indexed.length ? total / indexed.length : 1,
   };
+
+  // idf needs the finished postings map, so the description weights are a second
+  // pass. One pass over every description term in the corpus — linear, once.
+  for (const skill of indexed) {
+    let weight = 0;
+    for (const term of skill.descTerms) weight += idf(index, term);
+    skill.descWeight = weight;
+  }
+
+  return index;
 }
 
 /**
@@ -295,23 +349,84 @@ export function matchPrompt(index: TriggerIndex, prompt: string): TriggerReport 
   const top = matches[0];
   const second = matches[1];
 
-  const coverage = top && terms.length ? top.matched.length / terms.length : 0;
+  /**
+   * Coverage is measured over the terms that *could* have matched — the ones
+   * occurring in at least one skill here — rather than over every content word
+   * in the request.
+   *
+   * A real request is mostly words no description will ever contain: "help me",
+   * "set up", "quick", "again". Counting those against the winner made coverage
+   * a measure of how conversationally the question was asked, and pushed
+   * correctly-answered requests into the `none` verdict — where `skillcheck test`
+   * fails a build with "nothing matched the request" about a skill that is
+   * plainly the answer and won 100% of the score. Dividing by what was
+   * answerable makes the number mean what it says: *of the request this repo
+   * could speak to, how much did the winner take?*
+   */
+  const unmatchable = terms.filter((term) => !index.postings.has(term));
+  const matchable = terms.length - unmatchable.length;
+  const coverage = top && matchable > 0 ? top.matched.length / matchable : 0;
   const margin = top && second ? (top.score - second.score) / top.score : top ? 1 : 0;
 
+  const contenders = top
+    ? matches.filter((m) => (top.score - m.score) / top.score < CLOSE_MARGIN)
+    : [];
+
   let verdict: Verdict = "clear";
-  if (!top || terms.length === 0 || coverage < MIN_COVERAGE) verdict = "none";
-  else if (second && margin < CLOSE_MARGIN) verdict = "close";
+  if (!top || matchable === 0 || coverage < MIN_COVERAGE) verdict = "none";
+  else if (contenders.length > 1) verdict = "close";
 
   return {
     prompt,
     terms,
     matches,
+    contenders,
     margin,
     coverage,
+    unmatchable,
     verdict,
     language,
     outOfLanguage: outOfLanguage(index, language),
   };
+}
+
+/**
+ * What a set of contenders agree on, and what separates them.
+ *
+ * A coin-flip verdict names the problem and stops one sentence short of an
+ * action: the author is told two skills tie at 7% and left to guess which word
+ * caused it. These two sets are the answer, and both are facts rather than
+ * advice — the shared terms are why the tie exists, and a contender's own terms
+ * are the vocabulary it already holds alone. An empty "only" list is the most
+ * useful output of all: it says this skill has nothing of its own, so no
+ * rewording will separate them and one of them should not exist.
+ *
+ * Rarest first, because a term two skills share that nothing else in the repo
+ * uses is doing more to bind them together than a term everybody has.
+ */
+export function contenderTerms(
+  index: TriggerIndex,
+  contenders: readonly TriggerMatch[],
+): { shared: string[]; only: Map<string, string[]> } {
+  // Keyed by file, not name. Two skills can share a `name` — the same skill
+  // vendored into two plugins is precisely the coin flip this explains — and a
+  // name-keyed map would silently drop one of them.
+  const sets = contenders.map((m) => index.byFile.get(m.file)?.descTerms ?? new Set<string>());
+  const byIdf = (a: string, b: string) => idf(index, b) - idf(index, a) || a.localeCompare(b);
+
+  const shared = [...(sets[0] ?? [])]
+    .filter((term) => sets.every((set) => set.has(term)))
+    .sort(byIdf);
+
+  const only = new Map<string, string[]>();
+  contenders.forEach((match, i) => {
+    only.set(
+      match.file,
+      [...sets[i]].filter((term) => sets.every((set, j) => j === i || !set.has(term))).sort(byIdf),
+    );
+  });
+
+  return { shared, only };
 }
 
 /**

@@ -104,10 +104,21 @@ describe("ranking", () => {
     expect(report.matches).toHaveLength(0);
   });
 
-  it("returns `none` when the winner catches only a sliver of the request", () => {
-    const report = matchPrompt(indexOf(files), "book a flight to Berlin and pack a text");
-    expect(report.coverage).toBeLessThan(0.34);
+  it("measures coverage over the terms that could have matched, not every word", () => {
+    // A real request is mostly words no description will ever contain. Counting
+    // those against the winner made coverage a measure of how conversationally
+    // the question was asked, and reported a sole 100%-share winner as
+    // "no skill covers this" — failing a build about the right answer.
+    const report = matchPrompt(indexOf(files), "hey can you help me quickly parse this invoice again");
+    expect(report.verdict).toBe("clear");
+    expect(report.matches[0].name).toBe("invoice-parser");
+    expect(report.unmatchable).toEqual(["hey", "help", "quickly"]);
+  });
+
+  it("still returns `none` when the repo shares no vocabulary with the request", () => {
+    const report = matchPrompt(indexOf(files), "book a flight to Berlin");
     expect(report.verdict).toBe("none");
+    expect(report.coverage).toBe(0);
   });
 
   it("calls a near-tie a coin flip rather than picking a winner", () => {

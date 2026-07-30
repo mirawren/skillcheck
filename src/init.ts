@@ -60,10 +60,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Activation drift compares this branch against the base revision, and
+          # reading the base needs its history. The default shallow clone has
+          # only the commit it checked out.
+          fetch-depth: 0
       # The major tag keeps this stable, and using the Action makes adoption
       # visible in GitHub's dependency graph. Trigger scenarios run
       # automatically when a scenarios file exists.
       - uses: ${ACTION_REPO}@v1
+        with:
+          # On a pull request, also report requests that changed hands between
+          # skills this change did not touch — the failure a normal diff cannot
+          # show, because it isn't written in either file.
+          diff: \${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
 `;
 }
 

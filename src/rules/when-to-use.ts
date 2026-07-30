@@ -38,13 +38,25 @@ export const whenToUse: Rule = {
   check(doc) {
     if (!doc.description) return [];
 
+    /**
+     * `when_to_use` is a real frontmatter field, listed in `unknown-keys` as one
+     * hosts read and already indexed by the ranking in match.ts. A skill that
+     * puts its trigger in the field built for exactly that was still told its
+     * description "never says when to use this skill" — the tool contradicting
+     * itself about the same file, at error severity. Both fields are searched,
+     * because either one answers the question the rule asks.
+     */
+    const whenToUseField =
+      typeof doc.frontmatter?.when_to_use === "string" ? doc.frontmatter.when_to_use : "";
+    const subject = whenToUseField ? `${doc.description}\n${whenToUseField}` : doc.description;
+
     const language = languageOf(doc);
     // No pack for this language: skillcheck cannot tell a trigger clause from a
     // capability clause here, and guessing would report an error on a
     // description that may be perfectly good. Silence is the honest answer.
     if (!language.pack) return [];
 
-    const folded = fold(doc.description);
+    const folded = fold(subject);
     const packs =
       language.confidence < LOW_CONFIDENCE
         ? // Thin evidence — a three-word description, or one made entirely of

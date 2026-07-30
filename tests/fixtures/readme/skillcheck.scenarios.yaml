@@ -1,0 +1,11 @@
+version: 1
+
+scenarios:
+  - prompt: "turn this markdown into a printable pdf report"
+    expect: pdf-report
+
+  - prompt: "write release notes from the git log"
+    expect: changelog-writer
+
+  - prompt: "what time is it in Tokyo"
+    expect: none

@@ -1,0 +1,4 @@
+{
+  "//": "skillcheck's own config. tests/fixtures holds skills that are deliberately broken — they are the inputs the rules are tested against, so linting them reports every failure this project exists to find, on purpose, in its own repo. Excluding them is what makes `npm run selfcheck` mean 'skillcheck passes its own rules'.",
+  "ignore": ["tests/fixtures/**"]
+}

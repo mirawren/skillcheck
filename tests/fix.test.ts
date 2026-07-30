@@ -75,16 +75,49 @@ describe("unknown-keys autofix", () => {
 });
 
 describe("smart-quotes autofix", () => {
-  const curly = `---\nname: demo\ndescription: “Generates reports” — use when asked\n---\n\n# Body — keep this dash\n`;
+  // Curly characters are written as escapes: several are visually identical, and
+  // a test about invisible characters must not depend on the reader seeing them.
+  const wrapped = `---\nname: demo\ndescription: \u201cGenerates reports. Use when asked.\u201d\n---\n\n# Body \u2014 keep this dash\n`;
 
-  it("replaces typographic characters in the frontmatter", () => {
-    const output = fixed(curly);
-    expect(output).toContain('"Generates reports"');
-    expect(output).toContain("- use when asked");
+  it("replaces curly quotes wrapping a whole value, both ends at once", () => {
+    expect(fixed(wrapped)).toContain('description: "Generates reports. Use when asked."');
   });
 
-  it("leaves the body's prose punctuation untouched", () => {
-    expect(fixed(curly)).toContain("# Body — keep this dash");
+  it("replaces an invisible space no editor would have shown the author", () => {
+    const nbsp = `---\nname: demo\ndescription:\u00a0Generates reports. Use when asked.\n---\n\n# Body\n`;
+    const output = fixed(nbsp);
+    expect(output).toContain("description: Generates reports.");
+    expect(output).not.toContain("\u00a0");
+  });
+
+  it("leaves a lone opening curly quote alone rather than breaking the YAML", () => {
+    // Replacing only the opener leaves an unterminated double-quoted scalar: a
+    // fix that turns a cosmetic oddity into a file that genuinely won't parse.
+    const lone = `---\nname: demo\ndescription: \u201cGenerates reports\u201d - use when asked\n---\n\n# Body\n`;
+    expect(fixed(lone)).toBe(lone);
+  });
+
+  it("never turns a loadable file into one that won't parse", () => {
+    // The guarantee this rule's own documentation makes, which it broke: the
+    // value below is valid YAML (a plain scalar whose curly quotes are ordinary
+    // characters), and replacing both ends with `"` produced
+    // `"Runs the "fast" suite…"` — written to disk, unparseable by any host.
+    const withDoubleQuotes = `---\nname: demo\ndescription: “Runs the "fast" suite. Use when the user asks to run tests.”\n---\n\n# Body\n`;
+    const output = fixed(withDoubleQuotes);
+    expect(parseSkillText("/tmp/skills/x/SKILL.md", output).parseError).toBeUndefined();
+    // The other ASCII quote is available, so the fix still happens.
+    expect(output).toContain(`description: 'Runs the "fast" suite.`);
+  });
+
+  it("declines to fix when neither ASCII quote is safe, and leaves the file alone", () => {
+    const both = `---\nname: demo\ndescription: “Runs the "fast" suite; don't use for e2e. Use when asked.”\n---\n\n# Body\n`;
+    expect(fixed(both)).toBe(both);
+  });
+
+  it("leaves prose punctuation untouched, in frontmatter and in the body", () => {
+    const dashes = `---\nname: demo\ndescription: Generates reports \u2014 don\u2019t use it for slides. Use when asked.\n---\n\n# Body \u2014 keep this dash\n`;
+    expect(fixed(dashes)).toBe(dashes);
+    expect(fixed(wrapped)).toContain("# Body \u2014 keep this dash");
   });
 });
 
@@ -122,6 +155,27 @@ describe("the fix loop", () => {
     const doc = parseSkillText("/tmp/skills/x/SKILL.md", output);
     expect(doc.parseError).toBeUndefined();
     expect(doc.name).toBe("pdf-tools");
+  });
+
+  it("discards a whole pass that would introduce a parse error", () => {
+    // The structural backstop, independent of any one fixer: a rule-by-rule
+    // promise is only as good as the next fixer somebody writes, so the loop
+    // checks the outcome and drops a pass that parses worse than its input.
+    const breaker = {
+      id: "test-breaker",
+      summary: "deliberately emits a corrupting edit",
+      docs: { why: "test double" },
+      check: () => [],
+      // Delete the closing frontmatter fence.
+      fix: (doc: { raw: string }) => {
+        const at = doc.raw.indexOf("\n---\n", 4);
+        return at === -1 ? [] : [{ start: at, end: at + 5, text: "\n" }];
+      },
+    };
+    const source = "---\nname: demo\ndescription: Fine. Use when asked.\n---\n\n# Body\n";
+    const outcome = fixText("/tmp/skills/x/SKILL.md", source, [breaker as never], ctx);
+    expect(outcome.output).toBe(source);
+    expect(outcome.changed).toBe(false);
   });
 });
 

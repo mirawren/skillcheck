@@ -214,3 +214,15 @@ Node ≥20. No linter/formatter config — match the style of the file you're ed
 - [docs/GOOD_FIRST_RULES.md](docs/GOOD_FIRST_RULES.md) — a backlog of rules that are ready to be written, each scoped to one small PR.
 - Issues labeled `good-first-rule`.
 - Best of all: run skillcheck on your own skills, and file whatever it *should* have caught but didn't. A good false-negative report is worth more than a rule.
+
+## Reporting a finding on a file that was fine
+
+This is the highest-value bug report this project takes, and it gets priority over everything else. A linter that cries wolf gets deleted and takes every other rule with it, so a rule firing on a correct file is treated as more serious than a rule missing a broken one.
+
+Every such fix lands as a case in [tests/false-positives.test.ts](tests/false-positives.test.ts), which is kept separate from the per-rule tests on purpose: those assert that a rule catches what it is for, while every test in that file asserts that a rule *stopped* flagging something an author wrote correctly. If you fix one, add the case there — and add the matching "still reports the real thing" assertion beside it, so the fix can't quietly switch the rule off.
+
+For a `when-to-use` false positive specifically, add the description to your language pack's `samples.triggers`. The language contract tests then enforce it, which means a later pattern change cannot bring the finding back.
+
+## Support for open-source contributors
+
+Anthropic's Claude for Open Source program supports eligible individuals doing substantive open-source work. If you are considering it, use the project's [eligibility and evidence guide](docs/claude-for-oss.md) for the official criteria, an application worksheet, and the duplicate-application warning. A contribution here is welcome, but it is not an eligibility credential by itself; quality and real ecosystem impact matter more than activity counts.

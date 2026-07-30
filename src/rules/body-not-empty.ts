@@ -1,4 +1,5 @@
 import { numberOption } from "../config.js";
+import { proseLines } from "../markdown.js";
 import { countWords } from "../text.js";
 import type { Finding, Rule } from "../types.js";
 
@@ -15,13 +16,14 @@ const DEFAULT_MIN_WORDS = 5;
  * insulting way to be wrong.
  */
 export function instructionalWordCount(body: string): number {
-  const cleaned = body
-    .replace(/<!--[\s\S]*?-->/g, " ") // HTML comments
-    .split(/\r?\n/)
+  // Code removal is shared with broken-references and no-placeholders (see
+  // src/markdown.ts) rather than kept as a second, weaker regex here: this one
+  // missed `~~~` fences and indented ones, so the two rules disagreed about
+  // what counted as code in the same file.
+  const cleaned = proseLines(body.replace(/<!--[\s\S]*?-->/g, " "))
+    .filter((line): line is string => line !== null)
     .filter((line) => !/^\s*#{1,6}\s/.test(line)) // drop ATX heading lines
     .join("\n")
-    .replace(/```[\s\S]*?```/g, " ") // fenced code blocks
-    .replace(/`[^`]*`/g, " ") // inline code
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1"); // keep link text, drop URL
   return countWords(cleaned);
 }

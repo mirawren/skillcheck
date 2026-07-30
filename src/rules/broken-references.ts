@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { proseLines } from "../markdown.js";
 import type { Finding, Rule } from "../types.js";
 
 // Markdown links/images with a relative target: [text](path) / ![alt](path)
@@ -27,8 +28,12 @@ export const brokenReferences: Rule = {
   },
   check(doc) {
     const findings: Finding[] = [];
-    const lines = doc.body.split(/\r?\n/);
+    // Prose only. A skill that documents a path, or shows what a broken link
+    // looks like, puts it in a fenced block — and this rule is an *error*, so
+    // reading code samples made it the most expensive false positive in the set.
+    const lines = proseLines(doc.body);
     lines.forEach((lineText, i) => {
+      if (lineText === null) return;
       for (const match of lineText.matchAll(LINK_RE)) {
         const target = match[1];
         if (!isRelativePath(target)) continue;

@@ -1,3 +1,4 @@
+import { proseLines } from "../markdown.js";
 import type { Finding, Rule } from "../types.js";
 
 /**
@@ -26,9 +27,13 @@ export const noPlaceholders: Rule = {
   },
   check(doc): Finding[] {
     const findings: Finding[] = [];
-    const lines = doc.body.split(/\r?\n/);
+    // Prose only: a `TODO` inside a fenced block is an example of the thing this
+    // rule is about, which is the opposite of a leftover. See src/markdown.ts.
+    const lines = proseLines(doc.body);
     for (let i = 0; i < lines.length && findings.length < MAX_FINDINGS; i++) {
-      const match = PATTERNS.find((p) => p.re.test(lines[i]));
+      const line = lines[i];
+      if (line === null) continue;
+      const match = PATTERNS.find((p) => p.re.test(line));
       if (!match) continue;
       findings.push({
         ruleId: this.id,
