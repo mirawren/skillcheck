@@ -37,8 +37,20 @@ export {
   MIN_COVERAGE,
 } from "./match.js";
 export type { TriggerIndex, TriggerMatch, TriggerReport, IndexedSkill, Verdict } from "./match.js";
-export { loadScenarios, parseScenarios, runScenarios, findScenarioFile, ScenarioError } from "./scenarios.js";
-export type { Scenario, ScenarioResult, ScenarioStatus } from "./scenarios.js";
+export {
+  loadScenarios,
+  parseScenarios,
+  runScenarios,
+  scenarioCoverage,
+  findScenarioFile,
+  ScenarioError,
+} from "./scenarios.js";
+export type {
+  Scenario,
+  ScenarioCoverage,
+  ScenarioResult,
+  ScenarioStatus,
+} from "./scenarios.js";
 export { applyBaseline, buildBaseline, loadBaseline, parseBaseline, findBaselineFile, BaselineError, BASELINE_FILENAME } from "./baseline.js";
 export type { BaselineFile, BaselineEntry, BaselineOutcome } from "./baseline.js";
 export { applyEdits, fixDocs, fixText, fixableRules } from "./fix.js";

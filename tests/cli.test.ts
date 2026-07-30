@@ -353,6 +353,9 @@ describe("test (trigger scenarios)", () => {
     const cap = captureIo();
     expect(runCli(["test", root, "--scenarios", file], cap.io)).toBe(0);
     expect(cap.out()).toContain("2 passed");
+    expect(stripVTControlCharacters(cap.out())).toContain(
+      "Assertion coverage: 1/1 skill named in expect or forbid",
+    );
   });
 
   it("fails, and says what actually won", () => {
@@ -362,6 +365,89 @@ describe("test (trigger scenarios)", () => {
     const cap = captureIo();
     expect(runCli(["test", root, "--scenarios", file], cap.io)).toBe(1);
     expect(cap.out()).toContain("pdf-report");
+  });
+
+  it("includes assertion coverage in JSON", () => {
+    const { root, file } = scenarios(
+      'scenarios:\n  - prompt: "export this analysis as a pdf"\n    expect: pdf-report\n',
+    );
+    const cap = captureIo();
+
+    expect(runCli(["test", root, "--scenarios", file, "--format", "json"], cap.io)).toBe(0);
+    const parsed = JSON.parse(cap.out());
+    expect(parsed.version).toBe(2);
+    expect(parsed.coverage).toEqual({
+      total: 1,
+      asserted: ["pdf-report"],
+      unasserted: [],
+    });
+  });
+
+  it("annotates failures and writes a trigger-contract job summary", () => {
+    const { root, file } = scenarios(
+      'scenarios:\n  - prompt: "export this analysis as a pdf"\n    expect: none\n',
+    );
+    const summaryFile = join(root, "summary.md");
+    writeFileSync(summaryFile, "");
+    const cap = captureIo({ GITHUB_STEP_SUMMARY: summaryFile });
+
+    expect(
+      runCli(
+        ["test", root, "--scenarios", file, "--format", "github", "--summary"],
+        cap.io,
+      ),
+    ).toBe(1);
+    expect(cap.out()).toMatch(/::error file=.*scenarios\.yaml,line=1::\[trigger-contract\]/);
+    expect(cap.out()).toContain("1 failed");
+
+    const summary = readFileSync(summaryFile, "utf8");
+    expect(summary).toContain("## skillcheck — trigger contracts");
+    expect(summary).toContain("expected no skill to match");
+    expect(summary).toContain("0 of 1 skill");
+  });
+
+  it("emits a warning annotation when a contract is too close to call", () => {
+    const root = tmpRepo({
+      "skills/grill-me/SKILL.md": skillMd(
+        "grill-me",
+        "Reviews your code changes for bugs, style issues and missed edge cases before you commit them.",
+      ),
+      "skills/review-me/SKILL.md": skillMd(
+        "review-me",
+        "Reviews your code changes for bugs, style problems and missed edge cases before you commit them.",
+      ),
+    });
+    const file = join(root, "scenarios.yaml");
+    writeFileSync(
+      file,
+      'scenarios:\n  - prompt: "review my code changes before I commit"\n    expect: review-me\n',
+    );
+    const cap = captureIo();
+
+    expect(runCli(["test", root, "--scenarios", file, "--format", "github"], cap.io)).toBe(0);
+    expect(cap.out()).toMatch(/::warning file=.*::\[trigger-contract\]/);
+  });
+
+  it("excludes config-ignored skills from the coverage denominator", () => {
+    const root = tmpRepo({
+      ...CLEAN,
+      "skills/invoice-parser/SKILL.md": skillMd(
+        "invoice-parser",
+        "Parses invoices into line items. Use when the user asks to read an invoice.",
+      ),
+    });
+    const file = join(root, "scenarios.yaml");
+    const config = join(root, "skillcheck.config.json");
+    writeFileSync(
+      file,
+      'scenarios:\n  - prompt: "export this analysis as a pdf"\n    expect: pdf-report\n',
+    );
+    writeFileSync(config, '{"ignore":["**/invoice-parser/**"]}\n');
+    const cap = captureIo();
+
+    expect(runCli(["test", root, "--scenarios", file, "--config", config], cap.io)).toBe(0);
+    expect(stripVTControlCharacters(cap.out())).toContain("Assertion coverage: 1/1 skill");
+    expect(cap.out()).not.toContain("invoice-parser");
   });
 
   it("explains itself when there is no scenarios file", () => {

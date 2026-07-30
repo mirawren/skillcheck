@@ -1,7 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { REPO_URL } from "./meta.js";
-import { parseScenarios, SCENARIO_FILENAMES, type ScenarioSeed, scenarioTemplate } from "./scenarios.js";
+import {
+  assertedSkillNames,
+  parseScenarios,
+  SCENARIO_FILENAMES,
+  type ScenarioSeed,
+  scenarioTemplate,
+} from "./scenarios.js";
 
 /**
  * `skillcheck init` is meant to be run more than once.
@@ -194,7 +200,7 @@ function appendMissingScenarios(
     return { error: "it doesn't parse; fix it and re-run" };
   }
 
-  const covered = new Set(existing.flatMap((s) => [...s.expect, ...s.forbid]));
+  const covered = assertedSkillNames(existing);
   const missing = seeds.filter((seed) => !covered.has(seed.name));
   if (missing.length === 0) return { added: [] };
 

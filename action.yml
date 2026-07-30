@@ -41,7 +41,7 @@ inputs:
   diff:
     description: >-
       Git ref to compare activation against, e.g. ${{ github.event.pull_request.base.sha }}.
-      Reports requests that changed hands between skills this pull request did not edit.
+      Reports regressed scenario contracts and requests that changed hands unexpectedly.
       Empty disables it. Requires full history — set `fetch-depth: 0` on actions/checkout.
     required: false
     default: ""
@@ -120,7 +120,9 @@ runs:
       env:
         SKILLCHECK_VERSION: ${{ inputs.version }}
         SKILLCHECK_PATH: ${{ inputs.path }}
+        SKILLCHECK_FORMAT: ${{ inputs.format }}
         SKILLCHECK_CONFIG: ${{ inputs.config }}
+        SKILLCHECK_SUMMARY: ${{ inputs.summary }}
       run: |
         set -euo pipefail
         # `config` decides which skills are in scope (its `ignore` patterns), so
@@ -128,13 +130,14 @@ runs:
         # a scenario resolves against skills the lint step ignored.
         args=()
         [ -n "$SKILLCHECK_CONFIG" ] && args+=(--config "$SKILLCHECK_CONFIG")
-        npx --yes "skillcheck@${SKILLCHECK_VERSION}" test $SKILLCHECK_PATH ${args[@]+"${args[@]}"}
+        [ "$SKILLCHECK_SUMMARY" = "true" ] && args+=(--summary)
+        npx --yes "skillcheck@${SKILLCHECK_VERSION}" test $SKILLCHECK_PATH \
+          --format "$SKILLCHECK_FORMAT" ${args[@]+"${args[@]}"}
 
     # Activation drift: the one question a pull request raises that no other
     # check can answer, because the outcome isn't written in either revision of
-    # any file — it only exists in the comparison. Fails only on a request that
-    # changed hands somewhere the author wasn't editing, so an ordinary
-    # description change stays green.
+    # any file — it only exists in the comparison. Stable scenario contracts
+    # fail only when they regress; repairs and allowed movement stay green.
     - name: Compare activation against the base revision
       shell: bash
       if: inputs.diff != ''

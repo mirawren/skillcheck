@@ -199,11 +199,17 @@ skillcheck.scenarios.yaml — 3 scenario(s) against 5 skill(s)
       → no skill
 
 2 passed, 1 failed (3 scenarios)
+
+Assertion coverage: 2/5 skills named in expect or forbid
+  Not named: grill-me, release-manager, review-me
+  Add expect or forbid scenarios for requests at those skills' boundaries.
 ```
 
 That second line is the `trigger-shadowing` warning cashed out: the broad `release-manager` swallows a request the narrow skill was written for. A scenario that only just passes is reported as *too close to call* rather than green.
 
 Now "my skill stopped triggering after I added another one" is a failed build with a diff attached, instead of a support thread. Scoring is deterministic — a scenario changes only when *you* change the text that decides.
+
+The coverage line keeps a small green suite honest. It reports which scanned skills are named by at least one `expect` or `forbid` assertion, and lists the ones that are not. It is deliberately informational: `expect: none` still protects the corpus boundary, and one arbitrary percentage should not decide whether a pull request ships.
 
 **`forbid` is the one that scales.** Past a handful of skills, `expect` over-specifies: it pins an exact winner, so an unrelated edit fails a scenario that was never really about that. `forbid` states what you actually mean — *the destructive one never takes this* — and keeps holding as the repo grows. It's also the right shape when being wrong is expensive: you don't need to know which skill handles a request to know which one must not. A forbidden skill that merely *trails* the winner by a hair is reported too, because that's one wording tweak from taking it.
 
@@ -320,7 +326,7 @@ jobs:
           diff: ${{ github.event.pull_request.base.sha }}
 ```
 
-Findings appear as inline PR annotations, plus a markdown report in the job summary. The action exposes `score`, `grade`, `errors`, `warnings` and `skills` as outputs, so you can gate on the score or commit a badge from the same run. If a scenarios file exists, it runs those too.
+Findings and failing trigger contracts appear as PR annotations, with both lint and scenario tables in the job summary. The action exposes `score`, `grade`, `errors`, `warnings` and `skills` as outputs, so you can gate on the score or commit a badge from the same run. If a scenarios file exists, it runs those too and shows direct assertion coverage.
 
 `diff` is what makes the check about *this* pull request: it adds the activation comparison above, and its findings land in the job summary as a table you can read without expanding a log. Leave it out and everything else still works — but a shallow clone can't read the base revision, which is why `fetch-depth: 0` is there. `skillcheck init` writes all of this for you.
 

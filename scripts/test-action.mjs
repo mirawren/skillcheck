@@ -107,7 +107,15 @@ check("check step, all optional inputs empty", {
 check("test step, all optional inputs empty", {
   step: TEST,
   env: {},
-  expect: ["--yes", `skillcheck@${actionVersion}`, "test", "."],
+  expect: [
+    "--yes",
+    `skillcheck@${actionVersion}`,
+    "test",
+    ".",
+    "--format",
+    "github",
+    "--summary",
+  ],
 });
 
 // Every optional input set, including a path containing a space — the case a
@@ -142,7 +150,23 @@ check("check step, every optional input set", {
 check("test step forwards config", {
   step: TEST,
   env: { SKILLCHECK_CONFIG: "my dir/skillcheck.config.json" },
-  expect: ["--yes", `skillcheck@${actionVersion}`, "test", ".", "--config", "my dir/skillcheck.config.json"],
+  expect: [
+    "--yes",
+    `skillcheck@${actionVersion}`,
+    "test",
+    ".",
+    "--format",
+    "github",
+    "--config",
+    "my dir/skillcheck.config.json",
+    "--summary",
+  ],
+});
+
+check("test step omits --summary when disabled", {
+  step: TEST,
+  env: { SKILLCHECK_FORMAT: "markdown", SKILLCHECK_SUMMARY: "false" },
+  expect: ["--yes", `skillcheck@${actionVersion}`, "test", ".", "--format", "markdown"],
 });
 
 // `path` is documented as accepting several space-separated paths.

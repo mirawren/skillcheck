@@ -6,7 +6,11 @@ import { REPO_URL, ruleDocUrl } from "./meta.js";
 import { displayPath, toPosix } from "./paths.js";
 import { catalog } from "./rules/index.js";
 import { displayWidth, padDisplay } from "./script.js";
-import type { ScenarioResult } from "./scenarios.js";
+import {
+  describeExpectation,
+  type ScenarioCoverage,
+  type ScenarioResult,
+} from "./scenarios.js";
 import { badgeColor, computeScore, type ScoreReport } from "./score.js";
 import type { CheckResult, Finding, RuleDocs, RuleInfo } from "./types.js";
 
@@ -709,16 +713,26 @@ function renderDriftMarkdown(report: DriftReport): string {
   return out.join("\n");
 }
 
-/** `skillcheck test` — scenario results, one line each. */
+export type ScenarioReportFormat = "pretty" | "json" | "markdown" | "github";
+
+export interface ScenarioRenderOptions {
+  /** Direct `expect` / `forbid` coverage of the scanned skill corpus. */
+  coverage?: ScenarioCoverage;
+  /** Scenarios file used for GitHub annotation locations. */
+  source?: string;
+}
+
+/** `skillcheck test` — scenario results for terminals, tools, and pull requests. */
 export function renderScenarioResults(
   results: readonly ScenarioResult[],
-  format: "pretty" | "json",
+  format: ScenarioReportFormat,
+  options: ScenarioRenderOptions = {},
 ): string {
   if (format === "json") {
     return JSON.stringify(
       {
-        // 2: `expect` became a list and `forbid` was added. Consumers that read
-        // `expect` as a string want to key off this.
+        // Coverage is additive to the version 2 envelope; its existing summary
+        // and scenario fields keep the same types and meaning.
         version: 2,
         summary: {
           total: results.length,
@@ -726,6 +740,7 @@ export function renderScenarioResults(
           close: results.filter((r) => r.status === "close").length,
           failed: results.filter((r) => r.status === "fail").length,
         },
+        coverage: options.coverage ?? null,
         scenarios: results.map((r) => ({
           prompt: r.scenario.prompt,
           expect: r.scenario.expectNone ? "none" : r.scenario.expect,
@@ -740,6 +755,8 @@ export function renderScenarioResults(
       2,
     );
   }
+  if (format === "markdown") return renderScenarioMarkdown(results, options.coverage);
+  if (format === "github") return renderScenarioGithub(results, options);
 
   const out: string[] = [];
   for (const r of results) {
@@ -754,14 +771,96 @@ export function renderScenarioResults(
   }
   out.push("");
 
-  const passed = results.filter((r) => r.status === "pass").length;
-  const close = results.filter((r) => r.status === "close").length;
-  const failed = results.filter((r) => r.status === "fail").length;
+  const { close, failed } = scenarioCounts(results);
+  const line = scenarioSummary(results);
+  out.push(failed ? pc.red(pc.bold(line)) : close ? pc.yellow(line) : pc.green(line));
+  if (options.coverage) appendPrettyCoverage(out, options.coverage);
+  return out.join("\n");
+}
+
+function scenarioCounts(results: readonly ScenarioResult[]) {
+  return {
+    passed: results.filter((result) => result.status === "pass").length,
+    close: results.filter((result) => result.status === "close").length,
+    failed: results.filter((result) => result.status === "fail").length,
+  };
+}
+
+function scenarioSummary(results: readonly ScenarioResult[]): string {
+  const { passed, close, failed } = scenarioCounts(results);
   const parts = [`${passed} passed`];
   if (close) parts.push(`${close} too close to call`);
   if (failed) parts.push(`${failed} failed`);
-  const line = `${parts.join(", ")} (${results.length} scenario${results.length === 1 ? "" : "s"})`;
-  out.push(failed ? pc.red(pc.bold(line)) : close ? pc.yellow(line) : pc.green(line));
+  return `${parts.join(", ")} (${plural(results.length, "scenario")})`;
+}
+
+function appendPrettyCoverage(out: string[], coverage: ScenarioCoverage): void {
+  out.push("");
+  out.push(
+    pc.bold(
+      `Assertion coverage: ${coverage.asserted.length}/${coverage.total} ${coverage.total === 1 ? "skill" : "skills"} named in expect or forbid`,
+    ),
+  );
+  if (coverage.unasserted.length > 0) {
+    const shown = coverage.unasserted.slice(0, 12);
+    const rest = coverage.unasserted.length - shown.length;
+    out.push(pc.dim(`  Not named: ${shown.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}`));
+    out.push(pc.dim("  Add expect or forbid scenarios for requests at those skills' boundaries."));
+  }
+}
+
+function renderScenarioMarkdown(
+  results: readonly ScenarioResult[],
+  coverage?: ScenarioCoverage,
+): string {
+  const out = ["## skillcheck — trigger contracts", "", `**${scenarioSummary(results)}**`, ""];
+  out.push("| | Request | Assertion | Actual | Diagnosis |");
+  out.push("| --- | --- | --- | --- | --- |");
+  for (const result of results) {
+    const status =
+      result.status === "pass" ? "✔ pass" : result.status === "close" ? "⚠ close" : "✖ fail";
+    out.push(
+      `| ${status} | ${mdCell(result.scenario.prompt)} | ${mdCell(describeExpectation(result.scenario))} | ${mdCell(result.actual ?? "no skill")} | ${mdCell(result.reason ?? "assertion held")} |`,
+    );
+  }
+
+  if (coverage) {
+    out.push("", "### Assertion coverage", "");
+    out.push(
+      `**${coverage.asserted.length} of ${plural(coverage.total, "skill")}** named in at least one \`expect\` or \`forbid\` assertion.`,
+    );
+    if (coverage.unasserted.length > 0) {
+      const shown = coverage.unasserted.slice(0, 20);
+      const rest = coverage.unasserted.length - shown.length;
+      out.push("");
+      out.push(
+        `Not named: ${shown.map((name) => `\`${name}\``).join(", ")}${rest > 0 ? `, and ${rest} more` : ""}.`,
+      );
+    }
+  }
+  return out.join("\n");
+}
+
+function renderScenarioGithub(
+  results: readonly ScenarioResult[],
+  options: ScenarioRenderOptions,
+): string {
+  const location = options.source ? ` file=${toPosix(options.source)},line=1` : "";
+  const out: string[] = [];
+  for (const result of results) {
+    if (result.status === "pass") continue;
+    const kind = result.status === "fail" ? "error" : "warning";
+    const detail = result.reason ?? "activation contract is too close to call";
+    out.push(
+      `::${kind}${location}::${escapeWorkflowData(`[trigger-contract] ${JSON.stringify(result.scenario.prompt)} — ${detail}`)}`,
+    );
+  }
+  out.push(scenarioSummary(results));
+  if (options.coverage) {
+    out.push(
+      `Assertion coverage: ${options.coverage.asserted.length}/${options.coverage.total} ${options.coverage.total === 1 ? "skill" : "skills"} named in expect or forbid`,
+    );
+  }
   return out.join("\n");
 }
 

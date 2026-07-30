@@ -81,6 +81,16 @@ export interface ScenarioResult {
   reason?: string;
 }
 
+/** Which scanned skills are named by at least one direct activation assertion. */
+export interface ScenarioCoverage {
+  /** Number of distinct skills in the trigger index. */
+  total: number;
+  /** Existing skill names mentioned by `expect` or `forbid`. */
+  asserted: string[];
+  /** Existing skill names never mentioned by either assertion. */
+  unasserted: string[];
+}
+
 /** Thrown for a malformed scenarios file; the CLI maps this to exit code 2. */
 export class ScenarioError extends Error {}
 
@@ -304,6 +314,32 @@ export function runScenarios(index: TriggerIndex, scenarios: readonly Scenario[]
       ? close(`${actual} wins by only ${Math.round(report.margin * 100)}% — too close to depend on`)
       : { scenario, status: "pass" as const, actual, report };
   });
+}
+
+/**
+ * Report direct assertion coverage without turning it into another threshold.
+ *
+ * `expect: none` protects the corpus boundary but names no individual skill.
+ * Missing names are excluded because {@link runScenarios} already fails them;
+ * counting a typo as coverage would make the metric less trustworthy.
+ */
+export function scenarioCoverage(
+  index: TriggerIndex,
+  scenarios: readonly Scenario[],
+): ScenarioCoverage {
+  const names = [...new Set(index.skills.map((skill) => skill.name))].sort();
+  const mentioned = assertedSkillNames(scenarios);
+
+  return {
+    total: names.length,
+    asserted: names.filter((name) => mentioned.has(name)),
+    unasserted: names.filter((name) => !mentioned.has(name)),
+  };
+}
+
+/** Distinct skill names explicitly mentioned by direct scenario assertions. */
+export function assertedSkillNames(scenarios: readonly Scenario[]): Set<string> {
+  return new Set(scenarios.flatMap((scenario) => [...scenario.expect, ...scenario.forbid]));
 }
 
 /** A skill to seed a starter scenario from. */

@@ -5,6 +5,7 @@ import {
   FORMAT_VERSION,
   parseScenarios,
   runScenarios,
+  scenarioCoverage,
   type Scenario,
   ScenarioError,
   scenarioTemplate,
@@ -247,6 +248,44 @@ describe("runScenarios", () => {
         scenario("what time is it in Tokyo", { forbid: ["pdf-extract"] }),
       ]);
       expect(result.status).toBe("pass");
+    });
+  });
+});
+
+describe("scenarioCoverage", () => {
+  it("names which scanned skills have a direct expect or forbid assertion", () => {
+    const coverage = scenarioCoverage(index(), [
+      scenario("pull the text out of this pdf", { expect: ["pdf-extract"] }),
+      scenario("what time is it in Tokyo", { expectNone: true }),
+    ]);
+
+    expect(coverage).toEqual({
+      total: 2,
+      asserted: ["pdf-extract"],
+      unasserted: ["invoice-parser"],
+    });
+  });
+
+  it("counts forbid as a direct boundary assertion", () => {
+    const coverage = scenarioCoverage(index(), [
+      scenario("never parse this as an invoice", { forbid: ["invoice-parser"] }),
+    ]);
+
+    expect(coverage.asserted).toEqual(["invoice-parser"]);
+  });
+
+  it("deduplicates references and does not count unknown skill names", () => {
+    const coverage = scenarioCoverage(index(), [
+      scenario("pull the text out of this pdf", {
+        expect: ["pdf-extract", "pdf-extract", "ghost-skill"],
+        forbid: ["invoice-parser"],
+      }),
+    ]);
+
+    expect(coverage).toEqual({
+      total: 2,
+      asserted: ["invoice-parser", "pdf-extract"],
+      unasserted: [],
     });
   });
 });

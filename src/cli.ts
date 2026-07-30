@@ -41,6 +41,7 @@ import {
   loadScenarios,
   parseScenarios,
   runScenarios,
+  scenarioCoverage,
   SCENARIO_FILENAMES,
   ScenarioError,
   type ScenarioSeed,
@@ -720,14 +721,22 @@ function commandTest(args: Args, io: CliIO): number {
     return 2;
   }
 
-  const results = runScenarios(buildIndex(skills), scenarios);
-  const json = args.format === "json";
-  if (!json) {
+  const index = buildIndex(skills);
+  const results = runScenarios(index, scenarios);
+  const coverage = scenarioCoverage(index, scenarios);
+  const format =
+    args.format === "json" || args.format === "markdown" || args.format === "github"
+      ? args.format
+      : "pretty";
+  if (format === "pretty") {
     io.out(
       `${pc.dim(`${displayPath(file)} — ${scenarios.length} scenario(s) against ${skills.length} skill(s)`)}\n\n`,
     );
   }
-  io.out(`${renderScenarioResults(results, json ? "json" : "pretty")}\n`);
+  io.out(`${renderScenarioResults(results, format, { coverage, source: file })}\n`);
+  if (args.summary) {
+    emitStepSummary(io, renderScenarioResults(results, "markdown", { coverage, source: file }));
+  }
   return results.some((r) => r.status === "fail") ? 1 : 0;
 }
 

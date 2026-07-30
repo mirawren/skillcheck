@@ -25,6 +25,8 @@ npx skillcheck test --scenarios path/to/other.yaml
 
 Exit `0` when every scenario passes, `1` when any fails, `2` when the file itself is malformed.
 
+Every run also reports **assertion coverage**: how many scanned skills are named by at least one `expect` or `forbid`, followed by the names that are not. Coverage is informational, not another pass/fail threshold. An `expect: none` scenario protects the corpus boundary without naming one skill, and that remains useful even though it does not increase this direct-coverage count.
+
 ## Top level
 
 Either a mapping with a `scenarios:` list, or a bare list. Both parse; the mapping form is preferred because it has somewhere to put `version`.
@@ -108,6 +110,12 @@ Both keys can appear on one scenario:
 - a **forbidden** skill trails the winner by less than 15%.
 
 That second one matters. "Must not win" alone would be too weak a reading: a forbidden skill sitting a hair behind the winner is one wording tweak away from taking the request, and reporting that is the entire point of the tool.
+
+### CI and machine output
+
+- `--format github` emits an error annotation for each failed contract and a warning annotation for each close result.
+- `--format markdown` renders the trigger-contract table used by `--summary` in a GitHub job summary.
+- `--format json` includes the full `asserted` and `unasserted` skill lists under `coverage`, additively within the version 2 output envelope.
 
 ### Names must exist
 
