@@ -54,7 +54,7 @@ Every item here was a live finding on a file that was correct, most at error sev
 ### Launch readiness
 
 - Fixed the GitHub-only color-sensitive test that left the public CI badge red while the same 497-test suite passed locally.
-- Fixed Windows revision paths whose spelling differed only by case, which made `skillcheck diff` reject paths inside the repository as external.
+- Canonicalized Windows revision paths before containment checks, so filesystem aliases no longer make `skillcheck diff` reject paths inside the repository as external.
 - The CI smoke tests now exercise their deliberately good and bad fixtures outside the repository's self-check exclusions instead of reporting an empty corpus as clean.
 - npm 11 preserves the packaged CLI entry point, and the release check rejects a manifest that npm would silently strip.
 - The release workflow is now parsed by `npm run check`, publishes npm before preparing the GitHub release, maintains the floating `v1` Action tag, and leaves a Marketplace-ready draft for the owner.
@@ -118,6 +118,10 @@ Every item here was a live finding on a file that was correct, most at error sev
 - The binary moved from `dist/cli.js` to `dist/bin.js` (`package.json` `bin` handles this; nothing changes for `npx skillcheck` users). `src/cli.ts` now exports `runCli(argv, io)` returning an exit code, so the CLI is testable in-process.
 - `fixFiles(files, …)` is now `fixDocs(docs, rulesFor, ctx)` — pure over already-parsed docs, with per-doc rule selection so `x-skillcheck` opt-outs apply to autofix too.
 - `Rule` now requires a `docs` field.
+
+## 1.0.0 — 2026-07-30
+
+The immutable tag was pushed, but its workflow stopped before publishing npm or creating a GitHub release. Do not use this version; 1.0.1 is the first installable stable release.
 
 ## 0.2.0
 

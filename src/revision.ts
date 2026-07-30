@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { isDiscoverableSkillPath } from "./discover.js";
 import { parseSkillText } from "./parse.js";
@@ -144,7 +145,10 @@ function listSkills(root: string, ref: string, roots: readonly string[]): Revisi
 /** `path` expressed relative to the repo root, as a git pathspec. */
 function repoRelative(root: string, path: string): string {
   const abs = isAbsolute(path) ? resolve(path) : resolve(process.cwd(), path);
-  const rel = relative(root, abs);
+  // Git and Node can spell the same Windows path differently (notably a long
+  // user profile versus its 8.3 alias). Compare the paths the filesystem says
+  // they are, not those two textual spellings.
+  const rel = relative(realpathSync.native(root), realpathSync.native(abs));
   if (!rel) return ".";
   if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
     throw new RevisionError(
