@@ -575,7 +575,12 @@ function commandDiff(args: Args, io: CliIO): number {
     } catch (err) {
       io.err(pc.yellow(`skillcheck: ignoring ${displayPath(scenarioFile)} — ${(err as Error).message}\n`));
     }
-    scenarios = assertedAtBothRevisions(scenarios, scenarioFile, ref, io);
+    scenarios = assertedAtBothRevisions(
+      scenarios,
+      scenarioFile,
+      ref,
+      args.format === "pretty" ? io.out : io.err,
+    );
   }
 
   const report = compareCorpora({
@@ -615,7 +620,7 @@ function assertedAtBothRevisions(
   scenarios: readonly ReturnType<typeof loadScenarios>[number][],
   scenarioFile: string,
   ref: string,
-  io: CliIO,
+  writeNotice: (text: string) => void,
 ): ReturnType<typeof loadScenarios> {
   if (scenarios.length === 0) return [...scenarios];
 
@@ -642,7 +647,7 @@ function assertedAtBothRevisions(
   const added = scenarios.filter((s) => !baselinePrompts.has(s.prompt.trim())).length;
   const changed = scenarios.length - kept.length - added;
   if (added > 0) {
-    io.out(
+    writeNotice(
       pc.dim(
         `  ${plural(added, "scenario")} added in this change ${added === 1 ? "is" : "are"} not compared — ` +
           `${added === 1 ? "it has" : "they have"} no answer at ${ref}. \`skillcheck test\` checks ${added === 1 ? "it" : "them"}.\n`,
@@ -650,7 +655,7 @@ function assertedAtBothRevisions(
     );
   }
   if (changed > 0) {
-    io.out(
+    writeNotice(
       pc.dim(
         `  ${plural(changed, "scenario assertion")} changed in this change ${changed === 1 ? "is" : "are"} not compared — ` +
           `${changed === 1 ? "it has" : "they have"} no stable contract at ${ref}. \`skillcheck test\` checks ${changed === 1 ? "it" : "them"}.\n`,

@@ -523,6 +523,11 @@ describe("the diff command", () => {
     expect(out).toContain("assertion changed");
     expect(out).toContain("skillcheck test");
     expect(out).not.toContain("scenario repaired");
+
+    const machine = captureIo();
+    expect(runCli(["diff", "--format", "json"], machine.io)).toBe(0);
+    expect(() => JSON.parse(machine.out())).not.toThrow();
+    expect(machine.err()).toContain("assertion changed");
   });
 
   it("exits clean, and says what it checked, when nothing moved", () => {
