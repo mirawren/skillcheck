@@ -38,16 +38,30 @@ export interface BudgetLine {
   count?: number;
 }
 
+/** One skill's two costs: the one it always charges, and the one it sometimes does. */
+export interface SkillBudget {
+  name: string;
+  file: string;
+  /** Its name + description — in context whether or not it fires. */
+  description: number;
+  /** Its body — added only when it does. */
+  body: number;
+}
+
 export interface BudgetReport {
   /** Loaded before the user's first word, in every session. */
   always: BudgetLine[];
   alwaysTotal: number;
   /** Context files below a scanned root: read only while working in their directory. */
   nested: BudgetLine[];
-  /** What each skill adds when it fires, largest first. */
-  onActivation: BudgetLine[];
-  /** Per-skill share of the always-on cost, largest first. */
-  descriptions: BudgetLine[];
+  /**
+   * Both costs per skill, dearest always-on first.
+   *
+   * Sorted on the description rather than the body, because that column is the
+   * one this report exists for: `body-size` already budgets a body, and nothing
+   * else tells you which description is taxing every request in the session.
+   */
+  perSkill: SkillBudget[];
   skills: number;
 }
 
@@ -68,15 +82,16 @@ export function computeBudget(
   skills: readonly SkillDoc[],
   contexts: readonly ContextDoc[],
 ): BudgetReport {
-  const descriptions: BudgetLine[] = skills
+  const perSkill: SkillBudget[] = skills
     .map((skill) => ({
-      label: skill.name ?? basename(skill.dir),
+      name: skill.name ?? basename(skill.dir),
       file: skill.file,
-      tokens: estimateTokens(listingOf(skill)),
+      description: estimateTokens(listingOf(skill)),
+      body: estimateTokens(skill.body),
     }))
-    .sort((a, b) => b.tokens - a.tokens || a.label.localeCompare(b.label));
+    .sort((a, b) => b.description - a.description || b.body - a.body || a.name.localeCompare(b.name));
 
-  const descriptionTokens = descriptions.reduce((sum, line) => sum + line.tokens, 0);
+  const descriptionTokens = perSkill.reduce((sum, entry) => sum + entry.description, 0);
 
   const always: BudgetLine[] = [];
   if (skills.length > 0) {
@@ -94,20 +109,11 @@ export function computeBudget(
     .filter((c) => !c.root)
     .map((doc) => ({ label: displayPath(doc.file), file: doc.file, tokens: estimateTokens(doc.body) }));
 
-  const onActivation: BudgetLine[] = skills
-    .map((skill) => ({
-      label: skill.name ?? basename(skill.dir),
-      file: skill.file,
-      tokens: estimateTokens(skill.body),
-    }))
-    .sort((a, b) => b.tokens - a.tokens || a.label.localeCompare(b.label));
-
   return {
     always,
     alwaysTotal: always.reduce((sum, line) => sum + line.tokens, 0),
     nested,
-    onActivation,
-    descriptions,
+    perSkill,
     skills: skills.length,
   };
 }

@@ -432,8 +432,7 @@ export function renderBudget(report: BudgetReport, format: "pretty" | "json"): s
         always: report.always.map(portable),
         alwaysTotal: report.alwaysTotal,
         nested: report.nested.map(portable),
-        onActivation: report.onActivation.map(portable),
-        descriptions: report.descriptions.map(portable),
+        perSkill: report.perSkill.map((entry) => ({ ...entry, file: toPosix(entry.file) })),
         skills: report.skills,
       },
       null,
@@ -442,12 +441,23 @@ export function renderBudget(report: BudgetReport, format: "pretty" | "json"): s
   }
 
   const out: string[] = [];
-  const rows = [...report.always, ...report.nested, ...report.onActivation];
-  const labelWidth = Math.max(20, ...rows.map((line) => displayWidth(line.label)), "total".length);
-  const numberWidth = Math.max(
-    ...rows.map((line) => tokenText(line.tokens).length),
-    tokenText(report.alwaysTotal).length,
-  );
+  const ALWAYS = "always";
+  const FIRES = "when it fires";
+  const labels = [
+    ...report.always.map((l) => l.label),
+    ...report.nested.map((l) => l.label),
+    ...report.perSkill.map((s) => s.name),
+    "total",
+    "Per skill",
+  ];
+  const labelWidth = Math.max(20, ...labels.map(displayWidth));
+  const amounts = [
+    ...report.always.map((l) => l.tokens),
+    ...report.nested.map((l) => l.tokens),
+    ...report.perSkill.flatMap((s) => [s.description, s.body]),
+    report.alwaysTotal,
+  ];
+  const numberWidth = Math.max(ALWAYS.length, ...amounts.map((n) => tokenText(n).length));
   const row = (label: string, tokens: number) =>
     `  ${padDisplay(label, labelWidth)}  ${tokenText(tokens).padStart(numberWidth)}`;
 
@@ -474,14 +484,32 @@ export function renderBudget(report: BudgetReport, format: "pretty" | "json"): s
     out.push("");
   }
 
-  if (report.onActivation.length > 0) {
-    out.push(pc.bold("On top, when a skill fires — its body"));
+  /**
+   * Both columns together, dearest always-on first.
+   *
+   * The aggregate above answers "how much", and stops there — which leaves the
+   * only actionable question unanswered. This column is the answer: it names
+   * the description taxing every request, next to the body that is the thing
+   * people already think of as the expensive part.
+   */
+  if (report.perSkill.length > 0) {
+    out.push(
+      pc.bold(padDisplay("Per skill", labelWidth + 2)) +
+        pc.dim(`${ALWAYS.padStart(numberWidth)}   ${FIRES}`),
+    );
     out.push("");
-    for (const line of report.onActivation.slice(0, BUDGET_ROWS)) out.push(row(line.label, line.tokens));
-    const rest = report.onActivation.slice(BUDGET_ROWS);
+    for (const skill of report.perSkill.slice(0, BUDGET_ROWS)) {
+      out.push(`${row(skill.name, skill.description)}   ${tokenText(skill.body).padStart(FIRES.length)}`);
+    }
+    const rest = report.perSkill.slice(BUDGET_ROWS);
     if (rest.length > 0) {
-      const restTokens = rest.reduce((sum, line) => sum + line.tokens, 0);
-      out.push(pc.dim(row(`… ${rest.length} more`, restTokens)));
+      const restDescriptions = rest.reduce((sum, s) => sum + s.description, 0);
+      const restBodies = rest.reduce((sum, s) => sum + s.body, 0);
+      out.push(
+        pc.dim(
+          `${row(`… ${rest.length} more`, restDescriptions)}   ${tokenText(restBodies).padStart(FIRES.length)}`,
+        ),
+      );
       out.push(pc.dim("  (--format json lists every one)"));
     }
     out.push("");
@@ -490,9 +518,9 @@ export function renderBudget(report: BudgetReport, format: "pretty" | "json"): s
   out.push(
     pc.dim(
       "Estimated offline and script-aware — roughly 4 characters per token in Latin\n" +
-        "text, 1 in Han. A description is what the model reads to choose a skill; a body\n" +
-        "is what it reads after choosing. Keeping a skill costs the first, using it the\n" +
-        "second.",
+        "text, 1 in Han. A description is what the model reads to choose a skill, so it\n" +
+        "is in context whether or not the skill fires; a body is what it reads after\n" +
+        "choosing. Keeping a skill costs the first, using it the second.",
     ),
   );
   return out.join("\n");

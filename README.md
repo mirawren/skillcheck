@@ -302,23 +302,28 @@ $ npx skillcheck budget
 Always in context
   loaded before the user's first word, carried by every request in the session
 
-  4 skill descriptions  ~246
-  AGENTS.md             ~713
-                        ────
-  total                 ~959 tokens
+  4 skill descriptions    ~246
+  AGENTS.md               ~713
+                        ──────
+  total                   ~959 tokens
 
-On top, when a skill fires — its body
+Per skill             always   when it fires
 
-  incident-writeup       ~44
-  api-client             ~38
-  migration-runner       ~38
-  pdf-report             ~23
+  incident-writeup         ~65             ~44
+  api-client               ~65             ~38
+  migration-runner         ~63             ~38
+  pdf-report               ~53             ~23
 
 Estimated offline and script-aware — roughly 4 characters per token in Latin
-text, 1 in Han. A description is what the model reads to choose a skill; a body
-is what it reads after choosing. Keeping a skill costs the first, using it the
-second.
+text, 1 in Han. A description is what the model reads to choose a skill, so it
+is in context whether or not the skill fires; a body is what it reads after
+choosing. Keeping a skill costs the first, using it the second.
 ```
+
+The **always** column is the one that pays for the report. It sorts on it, because
+`body-size` already budgets a body and nothing else tells you which *description*
+is taxing every request. Run it on a real repo — twelve well-written skills come
+to roughly 2,500 tokens before anyone types a word.
 
 It's a report, not a gate — it always exits `0`, and `--format json` has every
 line. There is no threshold for "too much context" that means the same thing in a

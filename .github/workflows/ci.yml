@@ -104,8 +104,9 @@ jobs:
           node -e "
             const b = JSON.parse(process.argv[1]);
             if (b.alwaysTotal <= 0) throw new Error('no always-on cost reported');
-            if (b.onActivation.length !== 4) throw new Error('expected four skill bodies');
+            if (b.perSkill.length !== 4) throw new Error('expected four skills');
             if (b.always.length !== 2) throw new Error('expected descriptions plus one context file');
+            if (!b.perSkill.every(s => s.description > 0 && s.body > 0)) throw new Error('a skill reported no cost');
           " "$out"
 
       # The multilingual path is the one most likely to break silently: nothing

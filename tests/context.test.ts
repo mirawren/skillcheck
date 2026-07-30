@@ -221,18 +221,34 @@ describe("budget", () => {
     expect(budget.skills).toBe(1);
     expect(budget.always.map((l) => l.label)).toEqual(["1 skill description", expect.stringContaining("AGENTS.md")]);
     expect(budget.alwaysTotal).toBe(budget.always.reduce((sum, l) => sum + l.tokens, 0));
+    // A nested context file is not part of the always-on total.
     expect(budget.nested).toHaveLength(1);
-    expect(budget.onActivation).toHaveLength(1);
-    // A description is cheaper than nothing only if it is empty; this one isn't.
-    expect(budget.descriptions[0].tokens).toBeGreaterThan(0);
+    expect(budget.perSkill).toHaveLength(1);
+    expect(budget.perSkill[0].description).toBeGreaterThan(0);
+    expect(budget.perSkill[0].body).toBeGreaterThan(0);
   });
 
   it("counts a description separately from the body it does not include", () => {
     const { docs } = check({
       "skills/pdf-report/SKILL.md": skillMd("pdf-report", "Short trigger sentence.", "x".repeat(4000)),
     });
-    const budget = computeBudget(docs.skills, docs.contexts);
-    expect(budget.onActivation[0].tokens).toBeGreaterThan(budget.descriptions[0].tokens * 10);
+    const [skill] = computeBudget(docs.skills, docs.contexts).perSkill;
+    expect(skill.body).toBeGreaterThan(skill.description * 10);
+  });
+
+  /** The always-on column is what the report exists for, so it sorts on it. */
+  it("puts the dearest always-on description first", () => {
+    const { docs } = check({
+      "skills/small/SKILL.md": skillMd("small", "Short. Use when asked.", "y".repeat(8000)),
+      "skills/big/SKILL.md": skillMd(
+        "big",
+        `Long trigger sentence repeated for weight. ${"Use when the user asks about reports. ".repeat(6)}`,
+        "y",
+      ),
+    });
+    const { perSkill } = computeBudget(docs.skills, docs.contexts);
+    expect(perSkill.map((s) => s.name)).toEqual(["big", "small"]);
+    expect(perSkill[0].body).toBeLessThan(perSkill[1].body);
   });
 
   it("prints a total and labels every number an estimate", () => {
@@ -254,7 +270,7 @@ describe("budget", () => {
     const parsed = JSON.parse(cap.out());
     expect(parsed.version).toBe(1);
     expect(parsed.alwaysTotal).toBeGreaterThan(0);
-    expect(parsed.onActivation[0].file).not.toContain("\\");
+    expect(parsed.perSkill[0].file).not.toContain("\\");
   });
 
   it("rejects a format it cannot render", () => {
