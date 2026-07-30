@@ -18,7 +18,7 @@ export const SCORE_WEIGHTS = { error: 25, warning: 5 } as const;
 export type Grade = "A" | "B" | "C" | "D" | "F";
 
 export interface UnitScore {
-  /** Absolute path of the scanned skill or plugin manifest. */
+  /** Absolute path of the scanned skill, plugin manifest or context file. */
   file: string;
   score: number;
   grade: Grade;
@@ -79,6 +79,10 @@ export function computeScore(result: CheckResult): ScoreReport {
   };
   for (const file of result.files.skills) seed(file);
   for (const file of result.files.plugins) seed(file);
+  // Tolerated as absent: `contexts` arrived after 1.0, and this function is
+  // exported. A caller holding an older CheckResult should get a score, not a
+  // TypeError from inside a scoring routine.
+  for (const file of result.files.contexts ?? []) seed(file);
   for (const f of result.findings) {
     const c = counts.get(f.file);
     if (!c) continue; // finding on an un-scanned file: ignore (shouldn't happen)

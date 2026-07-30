@@ -89,7 +89,7 @@ describe("check", () => {
 
     expect(runCli([root], cap.io)).toBe(2);
     expect(cap.out()).toBe("");
-    expect(cap.err()).toContain("no SKILL.md or .claude-plugin/plugin.json found");
+    expect(cap.err()).toContain("no SKILL.md, .claude-plugin/plugin.json, AGENTS.md or CLAUDE.md");
     expect(cap.all()).not.toContain("100/100");
   });
 

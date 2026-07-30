@@ -1,4 +1,5 @@
 import pc from "picocolors";
+import type { BudgetLine, BudgetReport } from "./budget.js";
 import type {
   DriftKind,
   DriftReport,
@@ -226,8 +227,17 @@ function renderPretty(result: CheckResult, score: ScoreReport, baselined: number
 }
 
 function scanned(result: CheckResult): string {
-  const { skills, plugins } = result.summary;
-  return `${skills} skill${skills === 1 ? "" : "s"}${plugins ? `, ${plugins} plugin manifest${plugins === 1 ? "" : "s"}` : ""}`;
+  const { skills, plugins, contexts } = result.summary;
+  const parts: string[] = [];
+  // "0 skills, 1 context file" is a true sentence that reads like a bug. The
+  // skills count is only dropped when something else was actually scanned —
+  // a run that found nothing at all still has to say so.
+  if (skills > 0 || (!plugins && !contexts)) {
+    parts.push(`${skills} skill${skills === 1 ? "" : "s"}`);
+  }
+  if (plugins) parts.push(`${plugins} plugin manifest${plugins === 1 ? "" : "s"}`);
+  if (contexts) parts.push(`${contexts} context file${contexts === 1 ? "" : "s"}`);
+  return parts.join(", ");
 }
 
 function scoreScope(result: CheckResult, score: ScoreReport): string {
@@ -266,6 +276,99 @@ const BAR_WIDTH = 20;
 function bar(share: number): string {
   const filled = Math.max(1, Math.round(share * BAR_WIDTH));
   return "█".repeat(Math.min(filled, BAR_WIDTH)) + "░".repeat(Math.max(0, BAR_WIDTH - filled));
+}
+
+// ────────────────────────────────────────────────────────── budget ──────────
+
+/** Skills listed before the tail is folded into one line. See {@link renderBudget}. */
+const BUDGET_ROWS = 15;
+
+/**
+ * `skillcheck budget` — what the repo's instructions occupy before anyone asks
+ * for anything, and what each skill adds on top when it fires.
+ *
+ * Every number is labelled an estimate, in the output rather than in the docs,
+ * because it is one: skillcheck never calls a tokenizer API. See src/tokens.ts
+ * for what the estimate is made of and src/budget.ts for why the two halves are
+ * reported apart.
+ */
+export function renderBudget(report: BudgetReport, format: "pretty" | "json"): string {
+  if (format === "json") {
+    const portable = (line: BudgetLine) => (line.file ? { ...line, file: toPosix(line.file) } : line);
+    return JSON.stringify(
+      {
+        version: 1,
+        estimate: "offline, script-aware; see docs/rules.md#context-size",
+        always: report.always.map(portable),
+        alwaysTotal: report.alwaysTotal,
+        nested: report.nested.map(portable),
+        onActivation: report.onActivation.map(portable),
+        descriptions: report.descriptions.map(portable),
+        skills: report.skills,
+      },
+      null,
+      2,
+    );
+  }
+
+  const out: string[] = [];
+  const rows = [...report.always, ...report.nested, ...report.onActivation];
+  const labelWidth = Math.max(20, ...rows.map((line) => displayWidth(line.label)), "total".length);
+  const numberWidth = Math.max(
+    ...rows.map((line) => tokenText(line.tokens).length),
+    tokenText(report.alwaysTotal).length,
+  );
+  const row = (label: string, tokens: number) =>
+    `  ${padDisplay(label, labelWidth)}  ${tokenText(tokens).padStart(numberWidth)}`;
+
+  if (report.always.length > 0) {
+    out.push(pc.bold("Always in context"));
+    out.push(pc.dim("  loaded before the user's first word, carried by every request in the session"));
+    out.push("");
+    for (const line of report.always) out.push(row(line.label, line.tokens));
+    if (report.always.length > 1) {
+      out.push(`  ${" ".repeat(labelWidth)}  ${"─".repeat(numberWidth)}`);
+      out.push(pc.bold(`${row("total", report.alwaysTotal)} tokens`));
+    } else {
+      out.push(pc.dim(`  ${" ".repeat(labelWidth)}  ${" ".repeat(numberWidth)} tokens`));
+    }
+    out.push("");
+  }
+
+  if (report.nested.length > 0) {
+    out.push(pc.bold("Read while the agent works in that directory"));
+    out.push("");
+    for (const line of report.nested) out.push(row(line.label, line.tokens));
+    out.push("");
+  }
+
+  if (report.onActivation.length > 0) {
+    out.push(pc.bold("On top, when a skill fires — its body"));
+    out.push("");
+    for (const line of report.onActivation.slice(0, BUDGET_ROWS)) out.push(row(line.label, line.tokens));
+    const rest = report.onActivation.slice(BUDGET_ROWS);
+    if (rest.length > 0) {
+      const restTokens = rest.reduce((sum, line) => sum + line.tokens, 0);
+      out.push(pc.dim(row(`… ${rest.length} more`, restTokens)));
+      out.push(pc.dim("  (--format json lists every one)"));
+    }
+    out.push("");
+  }
+
+  out.push(
+    pc.dim(
+      "Estimated offline and script-aware — roughly 4 characters per token in Latin\n" +
+        "text, 1 in Han. A description is what the model reads to choose a skill; a body\n" +
+        "is what it reads after choosing. Keeping a skill costs the first, using it the\n" +
+        "second.",
+    ),
+  );
+  return out.join("\n");
+}
+
+/** `~1,240` — the tilde is part of the number, because the number is a guess. */
+function tokenText(tokens: number): string {
+  return `~${tokens.toLocaleString("en-US")}`;
 }
 
 /**

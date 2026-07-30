@@ -3,6 +3,7 @@ import type { Rule, RuleInfo } from "../types.js";
 import { bodyNotEmpty } from "./body-not-empty.js";
 import { bodySize } from "./body-size.js";
 import { brokenReferences } from "./broken-references.js";
+import { contextSize } from "./context-size.js";
 import { crossLanguageTrigger } from "./cross-language-trigger.js";
 import { descriptionLength } from "./description-length.js";
 import { descriptionSimilarity } from "./description-similarity.js";
@@ -38,6 +39,11 @@ export const rules: Rule[] = [
 
 /**
  * Everything skillcheck can report, for listing/explaining/documenting: the
- * runnable rules plus the plugin-manifest checks.
+ * skill rules, the context-file rules that aren't already one of them, and the
+ * plugin-manifest checks.
+ *
+ * `broken-references` and `no-placeholders` run over context files too, under
+ * the same id — one entry documents both, which is why they aren't listed
+ * twice.
  */
-export const catalog: RuleInfo[] = [...rules, pluginManifestInfo];
+export const catalog: RuleInfo[] = [...rules, contextSize, pluginManifestInfo];

@@ -34,6 +34,59 @@ export interface SkillDoc {
 }
 
 /**
+ * An `AGENTS.md` or `CLAUDE.md` — the instructions an agent reads *before* the
+ * user's first word, in every session, whether or not any skill fires.
+ *
+ * A skill is opt-in: its body costs nothing until the model chooses it. A
+ * context file is not. That difference is the whole reason this is a separate
+ * document kind rather than a `SkillDoc` with empty frontmatter — it has no
+ * `name` and no `description`, so every trigger rule is meaningless on it, and
+ * its size budget is a different, tighter number.
+ */
+export interface ContextDoc {
+  /** Absolute path of the file. */
+  file: string;
+  /** Absolute path of its directory — relative references resolve from here. */
+  dir: string;
+  /** The complete file text. */
+  raw: string;
+  /**
+   * The text scanners read. A context file has no frontmatter fence to strip,
+   * so this is `raw` — which is also what the agent is handed.
+   */
+  body: string;
+  /** Always 1: the body is the file. Present so {@link ScanTarget} is satisfied. */
+  bodyStartLine: number;
+  /** `AGENTS.md` or `CLAUDE.md` — reported, because hosts read them differently. */
+  kind: string;
+  /**
+   * True when this file sits at a scanned root, so an agent starting there
+   * loads it unconditionally. A nested one is loaded only while working in its
+   * directory, which is a materially different cost.
+   */
+  root: boolean;
+}
+
+/**
+ * A check over a {@link ContextDoc}. Structurally a {@link Rule} minus the
+ * autofixer — mechanical repair of a hand-written context file is not something
+ * this tool should be doing — so the same {@link RuleInfo} listing, `explain`
+ * output and generated reference cover both kinds without a special case.
+ */
+export interface ContextRule {
+  id: string;
+  summary: string;
+  /**
+   * Omitted by a rule that reuses a skill-side rule id — that rule's entry is
+   * already the documentation for both, and two catalog entries under one id
+   * would make `explain` and the generated reference pick one arbitrarily.
+   */
+  docs?: RuleDocs;
+  options?: RuleOption[];
+  check(doc: ContextDoc, ctx: CheckContext): Finding[];
+}
+
+/**
  * A single, character-range replacement into a file's raw text. Autofixers
  * emit these; the fix engine applies non-overlapping edits and re-runs until
  * the file stabilizes (see src/fix.ts).
@@ -123,6 +176,8 @@ export interface Summary {
   warnings: number;
   skills: number;
   plugins: number;
+  /** AGENTS.md / CLAUDE.md files checked. */
+  contexts: number;
 }
 
 export interface CheckResult {
@@ -136,5 +191,7 @@ export interface CheckResult {
   files: {
     skills: string[];
     plugins: string[];
+    /** Optional so a `CheckResult` built against 1.0 still type-checks. */
+    contexts?: string[];
   };
 }

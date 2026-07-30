@@ -12,6 +12,7 @@ import {
   loadBaseline,
   serializeBaseline,
 } from "./baseline.js";
+import { computeBudget } from "./budget.js";
 import { ConfigError, globToMatcher, loadConfig, type SkillcheckConfig } from "./config.js";
 import { compareCorpora, driftFailed, type ScenarioContractChange } from "./drift.js";
 import { type FileFixResult, fixableRules, fixDocs, MAX_PASSES } from "./fix.js";
@@ -28,6 +29,7 @@ import { displayWidth, padDisplay } from "./script.js";
 import {
   type Format,
   render,
+  renderBudget,
   renderDrift,
   renderExplain,
   renderScenarioResults,
@@ -70,16 +72,18 @@ class UsageError extends Error {}
 const HELP = `skillcheck — activation preflight for agent skills
 
 Usage
-  skillcheck [paths...] [options]        check skills and plugin manifests (default)
+  skillcheck [paths...] [options]        check skills, manifests and AGENTS.md (default)
   skillcheck why "<request>" [paths...]  show which skill a request would reach
   skillcheck diff [<ref>] [paths...]     what this change did to which skill wins
   skillcheck test [paths...]             run trigger scenarios from skillcheck.scenarios.yaml
+  skillcheck budget [paths...]           what your instructions cost before anyone asks
   skillcheck explain <rule>              why a rule exists, with examples
   skillcheck init [dir]                  add CI, starter trigger tests and a badge
   skillcheck rules                       list every check
   skillcheck languages [paths...]        which languages your skills are written in
 
-  Scans for SKILL.md files and .claude-plugin/plugin.json manifests.
+  Scans for SKILL.md files, .claude-plugin/plugin.json manifests, and the
+  AGENTS.md / CLAUDE.md an agent reads on every request.
   Offline, deterministic, no credentials, no network.
 
 Options
@@ -113,6 +117,7 @@ type Command =
   | "why"
   | "diff"
   | "test"
+  | "budget"
   | "explain"
   | "init"
   | "rules"
@@ -120,7 +125,17 @@ type Command =
   | "help"
   | "version";
 
-const COMMANDS = new Set(["check", "why", "diff", "test", "explain", "init", "rules", "languages"]);
+const COMMANDS = new Set([
+  "check",
+  "why",
+  "diff",
+  "test",
+  "budget",
+  "explain",
+  "init",
+  "rules",
+  "languages",
+]);
 const FORMATS = new Set(["pretty", "json", "github", "sarif", "badge", "markdown"]);
 
 interface Args {
@@ -269,6 +284,8 @@ export function runCli(argv: string[], io: CliIO = nodeIo): number {
         return commandDiff(args, io);
       case "test":
         return commandTest(args, io);
+      case "budget":
+        return commandBudget(args, io);
       default:
         return commandCheck(args, io);
     }
@@ -317,9 +334,9 @@ function commandCheck(args: Args, io: CliIO): number {
 
   const config = loadConfig(args.config).config;
   let docs = collectDocs(paths, config);
-  if (docs.skills.length === 0 && docs.manifests.length === 0) {
+  if (docs.skills.length === 0 && docs.manifests.length === 0 && docs.contexts.length === 0) {
     io.err(
-      `skillcheck: no SKILL.md or .claude-plugin/plugin.json found under ${paths.join(", ")}\n`,
+      `skillcheck: no SKILL.md, .claude-plugin/plugin.json, AGENTS.md or CLAUDE.md found under ${paths.join(", ")}\n`,
     );
     io.err(pc.dim("  check the paths and ignore patterns in your config.\n"));
     return 2;
@@ -340,7 +357,7 @@ function commandCheck(args: Args, io: CliIO): number {
     }
   }
 
-  const result = evaluate(docs.skills, docs.manifests, config);
+  const result = evaluate(docs.skills, docs.manifests, config, docs.contexts);
   // The score is always computed over EVERY finding. A baseline decides what
   // fails CI; it must never flatter the badge.
   const score = computeScore(result);
@@ -800,6 +817,35 @@ function commandTest(args: Args, io: CliIO): number {
     emitStepSummary(io, renderScenarioResults(results, "markdown", { coverage, source: file }));
   }
   return results.some((r) => r.status === "fail") ? 1 : 0;
+}
+
+// ────────────────────────────────────────────────────────── budget ──────────
+
+/**
+ * `skillcheck budget` — the always-on cost of a repo's agent instructions.
+ *
+ * A report, not a check: it always exits 0. There is no defensible threshold
+ * for "too much context" that holds across a two-skill repo and a marketplace,
+ * and inventing one would put a number in a build gate that skillcheck cannot
+ * justify. `context-size` budgets the one file it can reason about; this shows
+ * the total and lets a person decide.
+ */
+function commandBudget(args: Args, io: CliIO): number {
+  if (args.format !== "pretty" && args.format !== "json") {
+    throw new UsageError(`budget does not support --format ${args.format} — use pretty or json`);
+  }
+  const paths = pathsOf(args);
+  requireExisting(paths);
+
+  const config = loadConfig(args.config).config;
+  const { skills, contexts } = collectDocs(paths, config);
+  if (skills.length === 0 && contexts.length === 0) {
+    io.err(`skillcheck: no SKILL.md, AGENTS.md or CLAUDE.md found under ${paths.join(", ")}\n`);
+    return 2;
+  }
+
+  io.out(`${renderBudget(computeBudget(skills, contexts), args.format)}\n`);
+  return 0;
 }
 
 // ───────────────────────────────────────────────────── explain / rules ──────

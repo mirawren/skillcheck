@@ -2,7 +2,7 @@
 
 # Rule reference
 
-15 checks. Every one of them maps to a documented way a skill fails — nothing here is style for style's sake.
+16 checks. Every one of them maps to a documented way a skill fails — nothing here is style for style's sake.
 
 | Rule | Fixable | Checks |
 | --- | :---: | --- |
@@ -20,6 +20,7 @@
 | [`broken-references`](#broken-references) |  | relative links in the body point at files that actually exist |
 | [`no-placeholders`](#no-placeholders) |  | body ships no TODO/FIXME/placeholder leftovers |
 | [`unknown-keys`](#unknown-keys) | ✅ | frontmatter keys are ones some host actually reads (catches typos) |
+| [`context-size`](#context-size) |  | AGENTS.md / CLAUDE.md stays inside a budget paid on every request |
 | [`plugin-manifest`](#plugin-manifest) |  | plugin.json is valid, named, and versioned deliberately |
 
 Turn any rule off, or change its severity, in `skillcheck.config.json`:
@@ -372,7 +373,7 @@ Look up the endpoint in [references/endpoints.md](references/endpoints.md), then
 
 > relative links in the body point at files that actually exist
 
-Skills routinely ship references/, scripts/ and templates/ next to SKILL.md and point the model at them. A path that doesn't exist fails at runtime, on the user's machine, with no error you'll ever see — the model reads a dead pointer and improvises.
+Skills routinely ship references/, scripts/ and templates/ next to SKILL.md and point the model at them. A path that doesn't exist fails at runtime, on the user's machine, with no error you'll ever see — the model reads a dead pointer and improvises. The same check runs over AGENTS.md and CLAUDE.md, including their `@path` imports.
 
 **Trips on**
 
@@ -392,7 +393,7 @@ See [the template](templates/report.hbs) for the layout.  # the file that is act
 
 > body ships no TODO/FIXME/placeholder leftovers
 
-The model reads the body as instructions, not as source code it should skim past. A leftover `TODO` or `<your-api-key>` is either followed literally or treated as a gap to improvise around, and both fail in front of a user.
+The model reads the body as instructions, not as source code it should skim past. A leftover `TODO` or `<your-api-key>` is either followed literally or treated as a gap to improvise around, and both fail in front of a user. The same check runs over AGENTS.md and CLAUDE.md, where the marker is read at the start of every session rather than only when a skill fires.
 
 **Trips on**
 
@@ -433,6 +434,42 @@ description: Generates PDF reports.
 ```
 
 `skillcheck explain unknown-keys` prints this from the terminal.
+
+## context-size
+
+> AGENTS.md / CLAUDE.md stays inside a budget paid on every request
+
+An AGENTS.md or CLAUDE.md is loaded before the user's first word and carried by every request in the session — unlike a skill body, which costs nothing until the model chooses it. Everything in it competes for attention with the actual task, so reference material that is only occasionally needed belongs in a file the agent opens on demand, or in a skill that has to earn its activation.
+
+**Trips on**
+
+```yaml
+# AGENTS.md
+
+<600 lines: full API reference, every environment variable, the changelog>
+```
+
+**Passes**
+
+```yaml
+# AGENTS.md
+
+Build: `npm run build`. Test: `npm test`. Never edit `dist/`.
+Full API reference: [docs/api.md](docs/api.md) — read it when you touch the client.
+```
+
+**Options**
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `maxLines` | number | `250` | Lines allowed before warning. |
+| `maxTokens` | number | `2500` | Estimated tokens allowed before warning (script-aware estimate). |
+
+```json
+{ "options": { "context-size": { "maxLines": 250, "maxTokens": 2500 } } }
+```
+
+`skillcheck explain context-size` prints this from the terminal.
 
 ## plugin-manifest
 

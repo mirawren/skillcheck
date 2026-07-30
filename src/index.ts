@@ -1,14 +1,17 @@
 import { relative } from "node:path";
 import type { SkillcheckConfig } from "./config.js";
 import { globToMatcher } from "./config.js";
+import { checkContexts, parseContext } from "./context.js";
 import { discover } from "./discover.js";
 import { parsePluginManifest, parseSkill } from "./parse.js";
 import { checkPluginManifest } from "./plugin-checks.js";
 import { rules } from "./rules/index.js";
-import type { CheckContext, CheckResult, Finding, SkillDoc } from "./types.js";
+import type { CheckContext, CheckResult, ContextDoc, Finding, SkillDoc } from "./types.js";
 
 export type {
   CheckResult,
+  ContextDoc,
+  ContextRule,
   Finding,
   Rule,
   RuleDocs,
@@ -22,6 +25,17 @@ export type { SkillcheckConfig, RuleSetting, LoadedConfig } from "./config.js";
 export { loadConfig, numberOption } from "./config.js";
 export { rules } from "./rules/index.js";
 export { estimateTokens } from "./tokens.js";
+export { computeBudget } from "./budget.js";
+export type { BudgetLine, BudgetReport } from "./budget.js";
+export {
+  checkContexts,
+  CONTEXT_FILENAMES,
+  contextRules,
+  isContextFilename,
+  parseContext,
+} from "./context.js";
+export { scanPlaceholders, scanReferences } from "./scan.js";
+export type { ScanTarget } from "./scan.js";
 export { computeScore, gradeFor, badgeColor, scoreForCounts, SCORE_WEIGHTS } from "./score.js";
 export type { Grade, ScoreReport, UnitScore } from "./score.js";
 export { parseSkill, parseSkillText } from "./parse.js";
@@ -77,10 +91,11 @@ export { proseLines } from "./markdown.js";
 /** Frontmatter key skills use to suppress specific rules on themselves. */
 const SUPPRESS_KEY = "x-skillcheck";
 
-/** The parsed inputs a check runs over: skills plus plugin-manifest paths. */
+/** The parsed inputs a check runs over: skills, manifests and context files. */
 export interface CollectedDocs {
   skills: SkillDoc[];
   manifests: string[];
+  contexts: ContextDoc[];
 }
 
 /**
@@ -95,10 +110,13 @@ export function collectDocs(roots: string[], config: SkillcheckConfig = {}): Col
     return matchers.some((m) => m(rel));
   };
 
-  const { skillFiles, pluginManifests } = discover(roots);
+  const { skillFiles, pluginManifests, contextFiles } = discover(roots);
   return {
     skills: skillFiles.filter((f) => !ignored(f)).map(parseSkill),
     manifests: pluginManifests.filter((f) => !ignored(f)),
+    contexts: contextFiles
+      .filter(({ file }) => !ignored(file))
+      .map(({ file, root }) => parseContext(file, root)),
   };
 }
 
@@ -114,6 +132,7 @@ export function evaluate(
   skills: SkillDoc[],
   manifests: string[],
   config: SkillcheckConfig = {},
+  contexts: ContextDoc[] = [],
 ): CheckResult {
   const ctx: CheckContext = { skills, options: config.options ?? {} };
 
@@ -136,6 +155,7 @@ export function evaluate(
       findings.push(...checkPluginManifest(parsePluginManifest(manifestFile)));
     }
   }
+  findings.push(...checkContexts(contexts, ctx, config.rules));
 
   findings = applyRuleSettings(findings, config.rules);
 
@@ -148,21 +168,24 @@ export function evaluate(
       warnings: findings.filter((f) => f.severity === "warning").length,
       skills: skills.length,
       plugins: manifests.length,
+      contexts: contexts.length,
     },
     files: {
       skills: skills.map((s) => s.file),
       plugins: manifests,
+      contexts: contexts.map((c) => c.file),
     },
   };
 }
 
 /**
- * Discover, parse, and check every SKILL.md and plugin manifest under `roots`.
- * The one-call convenience wrapper over {@link collectDocs} + {@link evaluate}.
+ * Discover, parse, and check every SKILL.md, plugin manifest and context file
+ * under `roots`. The one-call convenience wrapper over {@link collectDocs} +
+ * {@link evaluate}.
  */
 export function runCheck(roots: string[], config: SkillcheckConfig = {}): CheckResult {
-  const { skills, manifests } = collectDocs(roots, config);
-  return evaluate(skills, manifests, config);
+  const { skills, manifests, contexts } = collectDocs(roots, config);
+  return evaluate(skills, manifests, config, contexts);
 }
 
 /**

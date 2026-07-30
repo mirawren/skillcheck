@@ -10,6 +10,7 @@ function result(findings: Finding[], files: string[]): CheckResult {
       warnings: findings.filter((f) => f.severity === "warning").length,
       skills: files.length,
       plugins: 0,
+      contexts: 0,
     },
     files: { skills: files, plugins: [] },
   };
