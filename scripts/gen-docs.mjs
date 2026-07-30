@@ -28,6 +28,10 @@ const languagesDoc = join(root, "docs", "languages.md");
 const BEGIN = "<!-- BEGIN:languages -->";
 const END = "<!-- END:languages -->";
 
+function readText(path) {
+  return readFileSync(path, "utf8").replace(/\r\n?/g, "\n");
+}
+
 /** Scripts, spelled the way a reader would name them rather than internally. */
 const SCRIPT_NAMES = {
   latin: "Latin",
@@ -68,7 +72,7 @@ function languageTable() {
 }
 
 function renderLanguagesDoc() {
-  const current = readFileSync(languagesDoc, "utf8");
+  const current = readText(languagesDoc);
   const start = current.indexOf(BEGIN);
   const end = current.indexOf(END);
   if (start === -1 || end === -1) {
@@ -163,7 +167,7 @@ if (process.argv.includes("--check")) {
   for (const { file, label, content } of outputs) {
     let current = "";
     try {
-      current = readFileSync(file, "utf8");
+      current = readText(file);
     } catch {
       console.error(`${label} is missing — run \`npm run docs\``);
       process.exit(1);

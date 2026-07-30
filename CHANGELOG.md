@@ -55,6 +55,7 @@ Every item here was a live finding on a file that was correct, most at error sev
 
 - Fixed the GitHub-only color-sensitive test that left the public CI badge red while the same 497-test suite passed locally.
 - Canonicalized Windows revision paths before containment checks, so filesystem aliases no longer make `skillcheck diff` reject paths inside the repository as external.
+- Generated-document freshness checks normalize checkout line endings, so Windows does not report unchanged references as stale.
 - The CI smoke tests now exercise their deliberately good and bad fixtures outside the repository's self-check exclusions instead of reporting an empty corpus as clean.
 - npm 11 preserves the packaged CLI entry point, and the release check rejects a manifest that npm would silently strip.
 - The release workflow is now parsed by `npm run check`, publishes npm before preparing the GitHub release, maintains the floating `v1` Action tag, and leaves a Marketplace-ready draft for the owner.
