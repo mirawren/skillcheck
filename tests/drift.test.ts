@@ -80,13 +80,35 @@ describe("comparing two revisions of a corpus", () => {
   });
 
   it("allows a request to move between winners the scenario accepts", () => {
+    const alphaBefore = skill(
+      "invoice-reconciler",
+      "Reconciles vendor invoices against payments. Use when the user asks to reconcile vendor invoices.",
+    );
+    const betaBefore = skill(
+      "yaml-formatter",
+      "Formats Kubernetes YAML manifests. Use when the user asks to format Kubernetes YAML.",
+    );
+    const alphaAfter = parseSkillText(
+      alphaBefore.file,
+      skillMd(
+        "invoice-reconciler",
+        "Formats Kubernetes YAML manifests. Use when the user asks to format Kubernetes YAML.",
+      ),
+    );
+    const betaAfter = parseSkillText(
+      betaBefore.file,
+      skillMd(
+        "yaml-formatter",
+        "Reconciles vendor invoices against payments. Use when the user asks to reconcile vendor invoices.",
+      ),
+    );
     const report = compareCorpora({
       ref: "main",
-      before: [NARROW, BROAD_BEFORE],
-      after: [NARROW, BROAD_AFTER],
+      before: [alphaBefore, betaBefore],
+      after: [alphaAfter, betaAfter],
       scenarios: [
-        scenario("write release notes from the git log", {
-          expect: ["changelog-writer", "release-manager"],
+        scenario("reconcile these vendor invoices", {
+          expect: ["invoice-reconciler", "yaml-formatter"],
         }),
       ],
     });
@@ -111,8 +133,13 @@ describe("comparing two revisions of a corpus", () => {
     });
 
     expect(report.probes.scenarios).toBe(2);
-    expect(report.drifts.filter((drift) => drift.probe.source === "scenario").map((d) => d.kind))
-      .toEqual(["regressed", "allowed"]);
+    const scenarioDrifts = report.drifts.filter((drift) => drift.probe.source === "scenario");
+    expect(scenarioDrifts.map((drift) => drift.kind)).toEqual(["regressed", "narrowed"]);
+    expect(scenarioDrifts[1]).toMatchObject({
+      before: "changelog-writer",
+      after: "release-manager",
+    });
+    expect(scenarioDrifts[1].detail).toContain("too close to depend on");
     const json = JSON.parse(renderDrift(report, "json"));
     expect(json.drifts.filter((drift: { source: string }) => drift.source === "scenario").map(
       (drift: { contract: unknown }) => drift.contract,
@@ -706,7 +733,7 @@ describe("the diff command", () => {
     ]);
   });
 
-  it("does not misreport a malformed current scenario file as removed contracts", () => {
+  it("fails closed when the current scenario file is malformed", () => {
     const root = gitRepo({
       "skills/alpha/SKILL.md": skillMd(
         "alpha",
@@ -719,9 +746,30 @@ describe("the diff command", () => {
 
     process.chdir(root);
     const cap = captureIo();
-    expect(runCli(["diff", "--format", "json"], cap.io)).toBe(0);
-    expect(JSON.parse(cap.out()).scenarioContracts.skipped).toEqual([]);
-    expect(cap.err()).toContain("ignoring skillcheck.scenarios.yaml");
+    expect(runCli(["diff", "--format", "json"], cap.io)).toBe(2);
+    expect(cap.out()).toBe("");
+    expect(cap.err()).toContain("skillcheck.scenarios.yaml is not valid YAML");
+  });
+
+  it("fails closed when the historical scenario file is malformed", () => {
+    const root = gitRepo({
+      "skills/alpha/SKILL.md": skillMd(
+        "alpha",
+        "Handles alpha reports. Use when the user asks to write an alpha report.",
+      ),
+      "skillcheck.scenarios.yaml": "scenarios: [prompt: broken: yaml\n",
+    });
+    write(
+      root,
+      "skillcheck.scenarios.yaml",
+      'version: 1\nscenarios:\n  - prompt: "write an alpha report"\n    expect: alpha\n',
+    );
+
+    process.chdir(root);
+    const cap = captureIo();
+    expect(runCli(["diff", "--format", "json"], cap.io)).toBe(2);
+    expect(cap.out()).toBe("");
+    expect(cap.err()).toContain("skillcheck.scenarios.yaml@HEAD is not valid YAML");
   });
 
   it("exits clean, and says what it checked, when nothing moved", () => {

@@ -162,6 +162,8 @@ npx skillcheck diff --format json   # for a bot to comment with
 
 The version 2 JSON report keeps each scenario's normalized `expect` and `forbid` under `drifts[].contract`, and lists added, edited, or removed assertions under `scenarioContracts.skipped`. A bot never has to parse the human diagnosis to tell two contracts with the same prompt apart.
 
+If the current or historical scenarios file is malformed, `diff` exits `2` instead of returning a clean report with those contracts missing.
+
 Reading a past revision uses `git cat-file`, so nothing is checked out, stashed or fetched, and your working tree is never touched.
 
 ## Trigger tests

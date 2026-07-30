@@ -570,8 +570,8 @@ function commandDiff(args: Args, io: CliIO): number {
   }
 
   // Scenario prompts are the sharpest probes there are, so they're used when the
-  // repo has them — but an unparseable file must not take the whole comparison
-  // down, because drift is still fully answerable from the descriptions alone.
+  // repo has them. A malformed current or historical file fails closed: silently
+  // dropping checked-in regression contracts would make a clean report untrue.
   let scenarios: ReturnType<typeof loadScenarios> = [];
   let scenarioChanges: ScenarioContractChange[] = [];
   const autoScenarios = args.scenarios === undefined;
@@ -583,24 +583,15 @@ function commandDiff(args: Args, io: CliIO): number {
     currentScenarioFile ??
     (autoScenarios ? resolve(process.cwd(), SCENARIO_FILENAMES[0]) : null);
   if (scenarioFile) {
-    let currentScenariosReadable = true;
-    try {
-      if (currentScenarioFile) scenarios = loadScenarios(currentScenarioFile);
-    } catch (err) {
-      currentScenariosReadable = false;
-      io.err(pc.yellow(`skillcheck: ignoring ${displayPath(scenarioFile)} — ${(err as Error).message}\n`));
-    }
-    if (currentScenariosReadable) {
-      const selection = assertedAtBothRevisions(
-        scenarios,
-        scenarioFile,
-        ref,
-        autoScenarios,
-        io.err,
-      );
-      scenarios = selection.scenarios;
-      scenarioChanges = selection.changes;
-    }
+    if (currentScenarioFile) scenarios = loadScenarios(currentScenarioFile);
+    const selection = assertedAtBothRevisions(
+      scenarios,
+      scenarioFile,
+      ref,
+      autoScenarios,
+    );
+    scenarios = selection.scenarios;
+    scenarioChanges = selection.changes;
   }
 
   const report = compareCorpora({
@@ -624,9 +615,9 @@ function commandDiff(args: Args, io: CliIO): number {
  * A prompt or assertion written in the same change has no stable meaning at the
  * base revision, and ranking it there invents one. Adding a skill *together with
  * its scenario* — the workflow `skillcheck init` scaffolds — therefore failed
- * the build: the new
- * prompt was ranked against the old corpus, some incumbent "won" a request that
- * did not exist yet, and the report called it a request changing hands.
+ * the build: the new prompt was ranked against the old corpus, some incumbent
+ * "won" a request that did not exist yet, and the report called it a request
+ * changing hands.
  *
  * This is the same rule already applied to description probes, which come only
  * from skills present at both revisions, and for the same reason: a comparison
@@ -643,39 +634,20 @@ function assertedAtBothRevisions(
   scenarioFile: string,
   ref: string,
   autoDiscover: boolean,
-  writeNotice: (text: string) => void,
 ): ScenarioSelection {
   let before: string | null = null;
   let baselineFile = scenarioFile;
-  try {
-    for (const candidate of historicalScenarioCandidates(scenarioFile, autoDiscover)) {
-      const content = readFileAtRef(ref, candidate);
-      if (content === null) continue;
-      before = content;
-      baselineFile = candidate;
-      break;
-    }
-  } catch (err) {
-    writeNotice(
-      pc.yellow(
-        `skillcheck: could not read historical scenarios at ${ref} — ${(err as Error).message}; no scenario contracts were compared\n`,
-      ),
-    );
-    return { scenarios: [], changes: [] };
+  for (const candidate of historicalScenarioCandidates(scenarioFile, autoDiscover)) {
+    const content = readFileAtRef(ref, candidate);
+    if (content === null) continue;
+    before = content;
+    baselineFile = candidate;
+    break;
   }
 
   let baseline: Scenario[] = [];
   if (before !== null) {
-    try {
-      baseline = parseScenarios(before, `${displayPath(baselineFile)}@${ref}`);
-    } catch (err) {
-      writeNotice(
-        pc.yellow(
-          `skillcheck: could not parse historical scenarios at ${ref} — ${(err as Error).message}; no scenario contracts were compared\n`,
-        ),
-      );
-      return { scenarios: [], changes: [] };
-    }
+    baseline = parseScenarios(before, `${displayPath(baselineFile)}@${ref}`);
   }
 
   return selectStableScenarioContracts(baseline, scenarios);

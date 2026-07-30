@@ -372,6 +372,19 @@ function classify(
     // fails on a contract this change actually regressed.
     if (!acceptedBefore && !acceptedAfter) return null;
 
+    // `skillcheck test` calls this boundary out as too close to depend on. Diff
+    // must surface crossing it even when the winner also moves to another
+    // allowed skill, or the numerical margin changed by less than NARROW_DROP.
+    if (scenarioBefore.status === "pass" && scenarioAfter.status === "close") {
+      return {
+        ...base,
+        kind: "narrowed",
+        detail:
+          `${base.before ?? "no skill"} → ${base.after ?? "no skill"} — still satisfies ${expectation}, but ` +
+          (scenarioAfter.reason ?? "the result is now too close to depend on"),
+      };
+    }
+
     if (
       winnerBefore?.file !== winnerAfter?.file ||
       scenarioBefore.actual !== scenarioAfter.actual
@@ -380,20 +393,6 @@ function classify(
         ...base,
         kind: "allowed",
         detail: `${base.before ?? "no skill"} → ${base.after ?? "no skill"} — both satisfy ${expectation}`,
-      };
-    }
-
-    // `skillcheck test` calls this boundary out as too close to depend on. Diff
-    // must surface crossing it even when the numerical margin moved by less
-    // than the broader NARROW_DROP threshold below. An allowed winner change
-    // above remains the more specific event when both happen together.
-    if (scenarioBefore.status === "pass" && scenarioAfter.status === "close") {
-      return {
-        ...base,
-        kind: "narrowed",
-        detail:
-          scenarioAfter.reason ??
-          `${base.after ?? "the expected skill"} now satisfies the contract by too little to depend on`,
       };
     }
   }

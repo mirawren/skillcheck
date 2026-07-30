@@ -83,6 +83,8 @@ For description probes, drift still makes no quality judgement: it reports that 
 
 `skillcheck diff --format json` uses a version 2 envelope. Scenario drifts include normalized `expect` and `forbid` fields under `contract`, and assertions that could not be compared appear under `scenarioContracts.skipped` with their before and after forms.
 
+A malformed scenarios file on either revision makes `diff` exit `2`. Falling back to description probes would silently drop the stronger checked-in contracts and make a clean result ambiguous.
+
 Four outcomes fail a build: a stable scenario contract regressed, a description request changed hands between skills the change did not edit, a request stopped reaching anything, or a new error was introduced. Narrowing leads, repairs, allowed movement, intended description drift, and added skills remain informational.
 
 Reading the historical revision goes through `git ls-tree` and `git cat-file`, which read the local object database. Nothing is fetched, checked out or stashed, and the working tree is never modified. A ref that is not present locally — the usual cause being a shallow CI clone — is an error naming `fetch-depth: 0`, not a network call.
