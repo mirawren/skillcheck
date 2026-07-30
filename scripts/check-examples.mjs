@@ -41,6 +41,10 @@ const DOCS = ["README.md", "docs/trigger-simulation.md", "docs/scenarios.md", "d
 
 const MARKER = /^<!--\s*verify:\s*(.+?)\s*-->$/;
 
+function readText(path) {
+  return readFileSync(path, "utf8").replace(/\r\n?/g, "\n");
+}
+
 /**
  * Split a marker into argv plus options, honoring quoted arguments — a request
  * is one argument containing spaces, which is the whole point of the examples.
@@ -99,7 +103,7 @@ for (const doc of DOCS) {
   const path = join(root, doc);
   let lines;
   try {
-    lines = readFileSync(path, "utf8").split("\n");
+    lines = readText(path).split("\n");
   } catch {
     continue; // an optional doc that doesn't exist yet
   }
