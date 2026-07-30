@@ -9,7 +9,7 @@
 
 A skill's `description` is the only text a model reads before deciding whether to load it. Get it wrong and nothing errors — no warning, no log line. The skill just doesn't get picked, on someone else's machine, and you find out from a bug report that says "it didn't do the thing".
 
-`skillcheck` checks that text before you ship it, along with the fourteen other ways a `SKILL.md` breaks quietly — in [24 languages](docs/languages.md), because a skill that never triggers fails the same way in every one of them. It reads your [`AGENTS.md` and `CLAUDE.md`](#the-other-file-the-agent-reads) too: the instructions loaded whether or not any skill fires. It runs offline, in under a second, with no credentials.
+`skillcheck` checks that text before you ship it, along with the thirteen other ways a `SKILL.md` breaks quietly — in [24 languages](docs/languages.md), because a skill that never triggers fails the same way in every one of them. It reads your [`AGENTS.md` and `CLAUDE.md`](#the-other-file-the-agent-reads) too: the instructions loaded whether or not any skill fires. It runs offline, in under a second, with no credentials.
 
 <!-- verify: why "review my code changes before I commit" . cwd=tests/fixtures/bad exit=0 -->
 

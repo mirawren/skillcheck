@@ -19,11 +19,12 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LANGUAGES } from "../dist/languages/index.js";
-import { catalog } from "../dist/rules/index.js";
+import { catalog, rules } from "../dist/rules/index.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const target = join(root, "docs", "rules.md");
 const languagesDoc = join(root, "docs", "languages.md");
+const readme = join(root, "README.md");
 
 const BEGIN = "<!-- BEGIN:languages -->";
 const END = "<!-- END:languages -->";
@@ -157,6 +158,52 @@ function render() {
   return `${out.join("\n").trimEnd()}\n`;
 }
 
+/**
+ * Counts the README states in prose, checked against the code.
+ *
+ * These cannot be generated — they are sentences, not tables — and both had
+ * already drifted once. The README's own claim is that a number in it which
+ * disagrees with the tool is a failed build, so this is the check that makes
+ * that true of the prose as well as of the console blocks.
+ */
+const NUMBER_WORDS = [
+  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+  "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
+  "nineteen", "twenty",
+];
+
+function readmeClaims() {
+  const text = readText(readme);
+  const claims = [];
+
+  // "the thirteen other ways a `SKILL.md` breaks quietly" — every SKILL.md rule
+  // except the one the sentence has just described.
+  const others = /the (\w+) other ways a `SKILL\.md` breaks quietly/.exec(text);
+  claims.push(
+    others
+      ? { found: others[1], want: NUMBER_WORDS[rules.length - 1], what: "SKILL.md rules besides when-to-use" }
+      : { found: null, want: NUMBER_WORDS[rules.length - 1], what: "the 'other ways a SKILL.md breaks' sentence" },
+  );
+
+  // "16 checks, each tied to a documented way…"
+  const checks = /(\d+) checks, each tied to a documented way/.exec(text);
+  claims.push(
+    checks
+      ? { found: checks[1], want: String(catalog.length), what: "the rules-table heading count" }
+      : { found: null, want: String(catalog.length), what: "the rules-table heading count" },
+  );
+
+  // "[24 languages](docs/languages.md)"
+  const languages = /\[(\d+) languages\]\(docs\/languages\.md\)/.exec(text);
+  claims.push(
+    languages
+      ? { found: languages[1], want: String(LANGUAGES.length), what: "the language count" }
+      : { found: null, want: String(LANGUAGES.length), what: "the language count" },
+  );
+
+  return claims.filter((claim) => claim.found !== claim.want);
+}
+
 const outputs = [
   { file: target, label: "docs/rules.md", content: render() },
   { file: languagesDoc, label: "docs/languages.md", content: renderLanguagesDoc() },
@@ -164,6 +211,14 @@ const outputs = [
 
 if (process.argv.includes("--check")) {
   let stale = false;
+  for (const { found, want, what } of readmeClaims()) {
+    console.error(
+      found === null
+        ? `README.md no longer states ${what} in the expected wording — update this check or the README`
+        : `README.md says "${found}" for ${what}; the code says "${want}"`,
+    );
+    stale = true;
+  }
   for (const { file, label, content } of outputs) {
     let current = "";
     try {
