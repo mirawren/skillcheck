@@ -20,8 +20,11 @@ function skill(name: string, description: string): ReturnType<typeof parseSkillT
   return parseSkillText(`/r/skills/${name}/SKILL.md`, skillMd(name, description));
 }
 
-function scenario(prompt: string): Scenario {
-  return { prompt, expect: [], forbid: [], expectNone: false };
+function scenario(
+  prompt: string,
+  fields: Partial<Omit<Scenario, "prompt">> = {},
+): Scenario {
+  return { prompt, expect: [], forbid: [], expectNone: false, ...fields };
 }
 
 const NARROW = skill(
@@ -38,18 +41,87 @@ const BROAD_AFTER = skill(
 );
 
 describe("comparing two revisions of a corpus", () => {
-  it("reports a scenario request that changed hands as collateral", () => {
-    // The README's own story, detected without anyone writing an `expect:`.
+  it("fails when a scenario contract that passed at the base stops passing", () => {
     const report = compareCorpora({
       ref: "main",
       before: [NARROW, BROAD_BEFORE],
       after: [NARROW, BROAD_AFTER],
-      scenarios: [scenario("write release notes from the git log")],
+      scenarios: [
+        scenario("write release notes from the git log", { expect: ["changelog-writer"] }),
+      ],
     });
     const flip = report.drifts.find((d) => d.probe.source === "scenario");
-    expect(flip?.kind).toBe("collateral");
+    expect(flip?.kind).toBe("regressed");
     expect(flip?.before).toBe("changelog-writer");
     expect(flip?.after).toBe("release-manager");
+    expect(driftFailed(report)).toBe(true);
+    expect(stripVTControlCharacters(renderDrift(report, "pretty"))).toContain(
+      "1 scenario regressed",
+    );
+    expect(stripVTControlCharacters(renderDrift(report, "pretty"))).not.toContain(
+      "1 request changed hands unexpectedly",
+    );
+  });
+
+  it("does not fail when a description change repairs a scenario contract", () => {
+    const report = compareCorpora({
+      ref: "main",
+      before: [NARROW, BROAD_AFTER],
+      after: [NARROW, BROAD_BEFORE],
+      scenarios: [
+        scenario("write release notes from the git log", { expect: ["changelog-writer"] }),
+      ],
+    });
+    const repair = report.drifts.find((d) => d.probe.source === "scenario");
+    expect(repair?.kind).toBe("repaired");
+    expect(repair?.before).toBe("release-manager");
+    expect(repair?.after).toBe("changelog-writer");
+    expect(driftFailed(report)).toBe(false);
+  });
+
+  it("allows a request to move between winners the scenario accepts", () => {
+    const report = compareCorpora({
+      ref: "main",
+      before: [NARROW, BROAD_BEFORE],
+      after: [NARROW, BROAD_AFTER],
+      scenarios: [
+        scenario("write release notes from the git log", {
+          expect: ["changelog-writer", "release-manager"],
+        }),
+      ],
+    });
+    const movement = report.drifts.find((d) => d.probe.source === "scenario");
+    expect(movement?.kind).toBe("allowed");
+    expect(driftFailed(report)).toBe(false);
+  });
+
+  it("fails when an expect-none contract starts reaching a skill", () => {
+    const added = skill(
+      "webhooks",
+      "Configures Stripe webhook endpoints. Use when the user asks to debug a Stripe webhook.",
+    );
+    const report = compareCorpora({
+      ref: "main",
+      before: [NARROW],
+      after: [NARROW, added],
+      scenarios: [scenario("debug a Stripe webhook", { expectNone: true })],
+    });
+    expect(report.drifts.find((d) => d.probe.source === "scenario")?.kind).toBe("regressed");
+    expect(driftFailed(report)).toBe(true);
+  });
+
+  it("fails when a forbidden skill takes a scenario", () => {
+    const report = compareCorpora({
+      ref: "main",
+      before: [NARROW, BROAD_BEFORE],
+      after: [NARROW, BROAD_AFTER],
+      scenarios: [
+        scenario("write release notes from the git log", { forbid: ["release-manager"] }),
+      ],
+    });
+    const regression = report.drifts.find((d) => d.probe.source === "scenario");
+    expect(regression?.kind).toBe("regressed");
+    expect(regression?.detail).toContain("must not take this request");
     expect(driftFailed(report)).toBe(true);
   });
 
@@ -349,7 +421,7 @@ describe("reading skills at a git revision", () => {
 });
 
 describe("the diff command", () => {
-  it("fails the build on collateral drift and names both skills", () => {
+  it("fails the build on a scenario regression and names both skills", () => {
     const root = gitRepo({
       "skills/changelog-writer/SKILL.md": skillMd(
         "changelog-writer",
@@ -375,7 +447,7 @@ describe("the diff command", () => {
     const cap = captureIo();
     expect(runCli(["diff"], cap.io)).toBe(1);
     const out = stripVTControlCharacters(cap.out());
-    expect(out).toContain("changed hands");
+    expect(out).toContain("scenario regressed");
     expect(out).toContain("changelog-writer → release-manager");
     expect(out).toContain("from your scenarios file");
   });
@@ -417,6 +489,42 @@ describe("the diff command", () => {
     expect(out).toContain("skillcheck test");
   });
 
+  it("does not compare a scenario whose assertion changed in this PR", () => {
+    const root = gitRepo({
+      "skills/alpha/SKILL.md": skillMd(
+        "alpha",
+        "Handles alpha reports. Use when the user asks to write an alpha report.",
+      ),
+      "skills/beta/SKILL.md": skillMd(
+        "beta",
+        "Handles beta exports. Use when the user asks to export beta data.",
+      ),
+      "skillcheck.scenarios.yaml":
+        'version: 1\nscenarios:\n  - prompt: "write this report"\n    expect: alpha\n',
+    });
+    write(
+      root,
+      "skills/beta/SKILL.md",
+      skillMd(
+        "beta",
+        "Writes reports and exports beta data. Use when the user asks to write a report or export beta data.",
+      ),
+    );
+    write(
+      root,
+      "skillcheck.scenarios.yaml",
+      'version: 1\nscenarios:\n  - prompt: "write this report"\n    expect: beta\n',
+    );
+
+    process.chdir(root);
+    const cap = captureIo();
+    expect(runCli(["diff"], cap.io)).toBe(0);
+    const out = stripVTControlCharacters(cap.out());
+    expect(out).toContain("assertion changed");
+    expect(out).toContain("skillcheck test");
+    expect(out).not.toContain("scenario repaired");
+  });
+
   it("exits clean, and says what it checked, when nothing moved", () => {
     const root = gitRepo({
       "skills/one/SKILL.md": skillMd("one", "Does A. Use when the user asks for A."),
@@ -437,6 +545,7 @@ describe("the diff command", () => {
     const cap = captureIo();
     runCli(["diff", "HEAD", "--format", "json"], cap.io);
     const parsed = JSON.parse(cap.out());
+    expect(parsed.version).toBe(2);
     expect(parsed.ref).toBe("HEAD");
     expect(parsed.changes[0].kind).toBe("retriggered");
     expect(parsed.probes.total).toBeGreaterThan(0);

@@ -4,6 +4,8 @@ Notable changes. This project follows [semantic versioning](https://semver.org/)
 
 ## Unreleased
 
+- `skillcheck diff` now evaluates stable scenario assertions on both revisions instead of treating every winner change as a regression. Repairs and movement between allowed winners stay green; `expect`, `forbid`, and `expect: none` regressions fail. Scenario assertions edited in the same change are left to `skillcheck test` because they have no stable contract to compare.
+
 ## 1.0.1 — 2026-07-30
 
 The first stable public release.

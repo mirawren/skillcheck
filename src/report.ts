@@ -431,6 +431,12 @@ const DRIFT_SECTIONS: ReadonlyArray<{
   mark: "error" | "warning" | "note";
 }> = [
   {
+    kind: "regressed",
+    heading: "scenario regressed",
+    gloss: "a checked-in activation contract passed there and fails here",
+    mark: "error",
+  },
+  {
     kind: "collateral",
     heading: "changed hands",
     gloss: "a request now reaches a different skill, and not one you were editing",
@@ -447,6 +453,18 @@ const DRIFT_SECTIONS: ReadonlyArray<{
     heading: "lead narrowed",
     gloss: "the same skill still wins, by a margin that is no longer safe",
     mark: "warning",
+  },
+  {
+    kind: "repaired",
+    heading: "scenario repaired",
+    gloss: "a checked-in activation contract that failed there passes here",
+    mark: "note",
+  },
+  {
+    kind: "allowed",
+    heading: "allowed by scenario",
+    gloss: "the winner changed, but both outcomes satisfy the checked-in contract",
+    mark: "note",
   },
   {
     kind: "intended",
@@ -558,9 +576,12 @@ function changeSummary(report: DriftReport): string {
 function driftCounts(report: DriftReport) {
   const of = (kind: DriftKind) => report.drifts.filter((d) => d.kind === kind).length;
   return {
+    regressed: of("regressed"),
     collateral: of("collateral"),
     lost: of("lost"),
     narrowed: of("narrowed"),
+    repaired: of("repaired"),
+    allowed: of("allowed"),
     intended: of("intended"),
     gained: of("gained"),
   };
@@ -574,8 +595,11 @@ function driftSummaryLine(report: DriftReport, color: boolean): string {
   const resolved = report.findings.filter((f) => f.status === "fixed").length;
 
   const parts: string[] = [];
+  if (counts.regressed > 0) parts.push(`${plural(counts.regressed, "scenario")} regressed`);
   if (changed > 0) parts.push(`${plural(changed, "request")} changed hands unexpectedly`);
   if (counts.narrowed > 0) parts.push(`${plural(counts.narrowed, "lead")} narrowed`);
+  if (counts.repaired > 0) parts.push(`${plural(counts.repaired, "scenario")} repaired`);
+  if (counts.allowed > 0) parts.push(`${plural(counts.allowed, "allowed change")}`);
   if (counts.intended > 0) parts.push(`${plural(counts.intended, "intended change")} where you were editing`);
   if (counts.gained > 0) parts.push(`${plural(counts.gained, "request")} newly claimed`);
   if (introduced.length > 0) parts.push(`${plural(introduced.length, "new finding")}`);
@@ -587,13 +611,15 @@ function driftSummaryLine(report: DriftReport, color: boolean): string {
   }
   const msg = parts.join(", ");
   if (!color) return msg;
-  return changed > 0 || errors > 0 ? pc.red(pc.bold(msg)) : pc.yellow(msg);
+  return counts.regressed > 0 || changed > 0 || errors > 0
+    ? pc.red(pc.bold(msg))
+    : pc.yellow(msg);
 }
 
 function renderDriftJson(report: DriftReport): string {
   return JSON.stringify(
     {
-      version: 1,
+      version: 2,
       ref: report.ref,
       skills: { before: report.skillsBefore, after: report.skillsAfter },
       probes: report.probes,

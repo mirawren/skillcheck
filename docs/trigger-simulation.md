@@ -74,12 +74,14 @@ A model-in-the-loop check (`skillcheck eval`, on the roadmap) answers the questi
 
 The requests have to be *identical* on both sides, or the comparison would confound "the corpus changed" with "the question changed". Two sources satisfy that:
 
-1. **Your scenarios file**, if you keep one. The sharpest probes there are: a human wrote them in the words a user would use.
+1. **Your scenarios file**, if you keep one. The sharpest probes there are: a human wrote them in the words a user would use, together with what is allowed (`expect`) or forbidden (`forbid`).
 2. **Each skill's own description**, taken from both revisions. A description is the most precise available statement of what a skill claims, so it doubles as the request it should most obviously win. When a description was edited, both wordings become probes, which asks two genuinely different questions: do the requests this skill *used to* claim still reach it, and does something else already own the ones it claims now?
 
 Description probes come only from skills present at both revisions. An added skill's own words would trivially "change hands" to it and a removed one's would trivially leave — reporting either as drift would bury the real findings under the consequences of the change you are describing in the PR title.
 
-**Why this can't cry wolf.** Every other check has to decide whether some arrangement of text is *bad*, and can be wrong about it. Drift decides nothing: it reports that an answer changed, and it changed because you changed the text that decides it. There is nothing to be wrong about. That is why it needs no thresholds and no configuration — and it is why only three outcomes fail a build (a request that changed hands between skills you did not edit, a request that stopped reaching anything, and a new error), while a narrowing lead, an intended change, and an added skill are reported and stay green.
+For description probes, drift still makes no quality judgement: it reports that an answer changed because the decisive text changed. Scenario probes are stronger because they carry a checked-in contract. `diff` runs the same assertion against both revisions, so it fails only when a contract that passed before now fails. A repaired contract or a move between winners allowed by `expect: [a, b]` / `forbid` is reported and stays green. A scenario added or edited in the same change is not compared because it has no stable contract on both sides; `skillcheck test` checks its current assertion.
+
+Four outcomes fail a build: a stable scenario contract regressed, a description request changed hands between skills the change did not edit, a request stopped reaching anything, or a new error was introduced. Narrowing leads, repairs, allowed movement, intended description drift, and added skills remain informational.
 
 Reading the historical revision goes through `git ls-tree` and `git cat-file`, which read the local object database. Nothing is fetched, checked out or stashed, and the working tree is never modified. A ref that is not present locally — the usual cause being a shallow CI clone — is an error naming `fetch-depth: 0`, not a network call.
 

@@ -589,11 +589,12 @@ function commandDiff(args: Args, io: CliIO): number {
 }
 
 /**
- * Keep only the scenarios that were already asserted at `ref`.
+ * Keep only scenario contracts that were already asserted at `ref`.
  *
- * A prompt written in the same change has no answer at the base revision, and
- * ranking it there invents one. Adding a skill *together with its scenario* — the
- * workflow `skillcheck init` scaffolds — therefore failed the build: the new
+ * A prompt or assertion written in the same change has no stable meaning at the
+ * base revision, and ranking it there invents one. Adding a skill *together with
+ * its scenario* — the workflow `skillcheck init` scaffolds — therefore failed
+ * the build: the new
  * prompt was ranked against the old corpus, some incumbent "won" a request that
  * did not exist yet, and the report called it a request changing hands.
  *
@@ -627,9 +628,11 @@ function assertedAtBothRevisions(
     return [];
   }
 
-  const asserted = new Set(baseline.map((s) => s.prompt.trim()));
-  const kept = scenarios.filter((s) => asserted.has(s.prompt.trim()));
-  const added = scenarios.length - kept.length;
+  const baselinePrompts = new Set(baseline.map((s) => s.prompt.trim()));
+  const baselineContracts = new Set(baseline.map(scenarioContractKey));
+  const kept = scenarios.filter((s) => baselineContracts.has(scenarioContractKey(s)));
+  const added = scenarios.filter((s) => !baselinePrompts.has(s.prompt.trim())).length;
+  const changed = scenarios.length - kept.length - added;
   if (added > 0) {
     io.out(
       pc.dim(
@@ -638,7 +641,24 @@ function assertedAtBothRevisions(
       ),
     );
   }
+  if (changed > 0) {
+    io.out(
+      pc.dim(
+        `  ${plural(changed, "scenario assertion")} changed in this change ${changed === 1 ? "is" : "are"} not compared — ` +
+          `${changed === 1 ? "it has" : "they have"} no stable contract at ${ref}. \`skillcheck test\` checks ${changed === 1 ? "it" : "them"}.\n`,
+      ),
+    );
+  }
   return kept;
+}
+
+/** A scenario contract's semantic identity; list order does not change what it permits. */
+function scenarioContractKey(scenario: ReturnType<typeof loadScenarios>[number]): string {
+  return JSON.stringify({
+    prompt: scenario.prompt.trim(),
+    expect: scenario.expectNone ? ["none"] : [...scenario.expect].sort(),
+    forbid: [...scenario.forbid].sort(),
+  });
 }
 
 /** `1 scenario` / `2 scenarios`. */

@@ -1,6 +1,11 @@
 import { basename } from "node:path";
 import { buildIndex, CLOSE_MARGIN, matchPrompt, type TriggerMatch, type TriggerReport } from "./match.js";
-import type { Scenario } from "./scenarios.js";
+import {
+  describeExpectation,
+  runScenarios,
+  type Scenario,
+  type ScenarioResult,
+} from "./scenarios.js";
 import type { Finding, Severity, SkillDoc } from "./types.js";
 
 /**
@@ -14,13 +19,12 @@ import type { Finding, Severity, SkillDoc } from "./types.js";
  *
  * ## Why this can't cry wolf
  *
- * Every judgemental check has to decide whether some arrangement of text is
- * *bad*, and can be wrong about it — the failure mode that gets a linter
- * deleted. Drift makes no such judgement. It reports that an answer changed, and
- * it changed because the author changed the text that decides it. A reported
- * flip is a fact about two revisions; if it was intended, the reviewer nods and
- * moves on. That asymmetry is why this runs with no configuration and no
- * thresholds to tune.
+ * Description drift makes no quality judgement: it reports that an answer
+ * changed because the author changed the text that decides it. Scenario probes
+ * are stronger because a human wrote both the request and its allowed outcome.
+ * The same assertion runs on both revisions, so a build fails only when a
+ * contract that passed before fails now; repairs and allowed movement stay
+ * green. That asymmetry keeps this usable without thresholds or opt-outs.
  *
  * ## The distinction that makes it usable
  *
@@ -35,11 +39,10 @@ import type { Finding, Severity, SkillDoc } from "./types.js";
  *     worth failing.
  *
  * So the report is organized by whether the change landed where the author was
- * looking. Adding a skill never fails a build *for existing*: a tool that punishes
- * you for adding a skill is a tool you uninstall, so a newcomer's own description
- * contributes no probe and its arrival is reported, not judged. It can still fail
- * one way — by taking a request the scenarios file pins to another skill — and
- * that is a human-written assertion being broken, which is exactly what should
+ * looking. Adding a skill never fails for its own words: a tool that punishes
+ * you for adding a skill is a tool you uninstall, so a newcomer's description
+ * contributes no probe and its arrival is reported, not judged. It can still
+ * fail by breaking a stable scenario contract, which is exactly what should
  * fail.
  *
  * ## Where the requests come from
@@ -49,8 +52,8 @@ import type { Finding, Severity, SkillDoc } from "./types.js";
  * question changed". Two stable sources:
  *
  *   1. **The scenarios file** — requests a human wrote in the words a user would
- *      use. The sensitive probes; they see drift the corpus's own vocabulary
- *      can't.
+ *      use, plus the outcomes they allow or forbid. The sensitive probes; they
+ *      see drift the corpus's own vocabulary can't.
  *   2. **Each skill's own description**, at both revisions. A description is the
  *      most precise available statement of what a skill claims, so it doubles as
  *      the request it should most obviously win. When an edited description
@@ -77,6 +80,8 @@ export interface Probe {
   owner?: string;
   /** Whether that owner's own decisive text changed in this diff. */
   ownerTouched?: boolean;
+  /** The stable assertion attached to a scenario probe, when it has one. */
+  scenario?: Scenario;
   /** Single-line text to print for this probe. */
   label: string;
 }
@@ -84,12 +89,20 @@ export interface Probe {
 /**
  * What changed for one probe.
  *
- * `collateral` is the headline: a request changed hands between two skills that
- * this change didn't touch. `intended` is the same movement, on a skill the
- * author was editing. `narrowed` is a winner that held on but stopped being
- * safe.
+ * Scenario probes are judged against their checked-in contract: `regressed`
+ * newly breaks it, `repaired` restores it, and `allowed` moves between outcomes
+ * the contract permits. Description probes retain the location-based
+ * `collateral` / `intended` distinction.
  */
-export type DriftKind = "collateral" | "intended" | "lost" | "gained" | "narrowed";
+export type DriftKind =
+  | "regressed"
+  | "collateral"
+  | "lost"
+  | "narrowed"
+  | "repaired"
+  | "allowed"
+  | "intended"
+  | "gained";
 
 export interface ProbeDrift {
   probe: Probe;
@@ -238,7 +251,14 @@ export function buildProbes(
 
   for (const scenario of scenarios) {
     const prompt = scenario.prompt.trim();
-    if (prompt) byPrompt.set(prompt, { prompt, source: "scenario", label: labelFor(prompt) });
+    if (!prompt) continue;
+    const hasContract = scenario.expectNone || scenario.expect.length > 0 || scenario.forbid.length > 0;
+    byPrompt.set(prompt, {
+      prompt,
+      source: "scenario",
+      scenario: hasContract ? scenario : undefined,
+      label: labelFor(prompt),
+    });
   }
 
   const beforeByFile = new Map(before.map((d) => [d.file, d]));
@@ -294,6 +314,8 @@ function classify(
   before: TriggerReport,
   after: TriggerReport,
   touchedFiles: ReadonlySet<string>,
+  scenarioBefore?: ScenarioResult,
+  scenarioAfter?: ScenarioResult,
 ): ProbeDrift | null {
   const winnerBefore = winnerOf(before);
   const winnerAfter = winnerOf(after);
@@ -304,6 +326,43 @@ function classify(
     marginBefore: before.margin,
     marginAfter: after.margin,
   };
+
+  if (probe.scenario && scenarioBefore && scenarioAfter) {
+    const acceptedBefore = scenarioBefore.status !== "fail";
+    const acceptedAfter = scenarioAfter.status !== "fail";
+    const expectation = describeExpectation(probe.scenario);
+
+    if (acceptedBefore && !acceptedAfter) {
+      return {
+        ...base,
+        kind: "regressed",
+        detail:
+          `${base.before ?? "no skill"} → ${base.after ?? "no skill"} — ` +
+          (scenarioAfter.reason ?? `no longer satisfies ${expectation}`),
+      };
+    }
+    if (!acceptedBefore && acceptedAfter) {
+      return {
+        ...base,
+        kind: "repaired",
+        detail: `${base.before ?? "no skill"} → ${base.after ?? "no skill"} — now satisfies ${expectation}`,
+      };
+    }
+    // Pre-existing failing assertions belong to `skillcheck test`; diff only
+    // fails on a contract this change actually regressed.
+    if (!acceptedBefore && !acceptedAfter) return null;
+
+    if (
+      winnerBefore?.file !== winnerAfter?.file ||
+      scenarioBefore.actual !== scenarioAfter.actual
+    ) {
+      return {
+        ...base,
+        kind: "allowed",
+        detail: `${base.before ?? "no skill"} → ${base.after ?? "no skill"} — both satisfy ${expectation}`,
+      };
+    }
+  }
 
   // Identity is the file, so a renamed skill is still the same skill.
   if (winnerBefore?.file !== winnerAfter?.file) {
@@ -321,17 +380,7 @@ function classify(
         detail: `${winnerBefore.name} used to take this; now no skill matches enough of it`,
       };
     }
-    /**
-     * The whole point of the report: was the skill that changed hands one the
-     * author was working on?
-     *
-     * A scenario probe is always treated as collateral. Its wording is fixed and
-     * human-written, so nothing the author did to a description makes a
-     * different answer to it *intended* — that assertion is the closest thing
-     * the repo has to a specification. That is also why adding a skill can fail
-     * a build after all: not for existing, but for taking a request the
-     * scenarios file pins to something else.
-     */
+    /** The whole point of a description probe: did it move where the author was working? */
     const intended =
       probe.source === "description" &&
       probe.ownerTouched === true &&
@@ -359,11 +408,14 @@ function classify(
 
 /** Report order: a changed answer outranks a changed confidence. */
 const KIND_RANK: Record<DriftKind, number> = {
-  collateral: 0,
-  lost: 1,
-  narrowed: 2,
-  intended: 3,
-  gained: 4,
+  regressed: 0,
+  collateral: 1,
+  lost: 2,
+  narrowed: 3,
+  repaired: 4,
+  allowed: 5,
+  intended: 6,
+  gained: 7,
 };
 
 /**
@@ -476,11 +528,19 @@ export function compareCorpora(input: CompareInput): DriftReport {
 
   const drifts: ProbeDrift[] = [];
   for (const probe of probes) {
+    const scenarioBefore = probe.scenario
+      ? runScenarios(indexBefore, [probe.scenario])[0]
+      : undefined;
+    const scenarioAfter = probe.scenario
+      ? runScenarios(indexAfter, [probe.scenario])[0]
+      : undefined;
     const drift = classify(
       probe,
-      matchPrompt(indexBefore, probe.prompt),
-      matchPrompt(indexAfter, probe.prompt),
+      scenarioBefore?.report ?? matchPrompt(indexBefore, probe.prompt),
+      scenarioAfter?.report ?? matchPrompt(indexAfter, probe.prompt),
       touchedFiles,
+      scenarioBefore,
+      scenarioAfter,
     );
     if (drift) drifts.push(drift);
   }
@@ -511,18 +571,18 @@ export function compareCorpora(input: CompareInput): DriftReport {
 /**
  * Whether a drift report should fail a build.
  *
- * Three things do: a request that changed hands somewhere the author wasn't
- * looking, a request that stopped reaching anything at all, and a *new error*
- * this change introduced.
+ * Four things do: a checked-in scenario contract that regressed, a description
+ * probe that changed hands somewhere the author wasn't looking, a request that
+ * stopped reaching anything at all, and a *new error* this change introduced.
  *
- * Nothing else. Intended drift, a narrowing lead, and a new warning are all
- * reported and none of them fail — a check that fails on the expected
- * consequences of an ordinary edit gets switched off within a week, and takes
- * the useful signal with it.
+ * Nothing else. Repairs, allowed movement, intended drift, a narrowing lead,
+ * and a new warning are reported without failing.
  */
 export function driftFailed(report: DriftReport): boolean {
   return (
-    report.drifts.some((d) => d.kind === "collateral" || d.kind === "lost") ||
+    report.drifts.some(
+      (d) => d.kind === "regressed" || d.kind === "collateral" || d.kind === "lost",
+    ) ||
     report.findings.some((f) => f.status === "new" && f.severity === "error")
   );
 }

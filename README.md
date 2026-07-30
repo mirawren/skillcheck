@@ -119,15 +119,15 @@ $ npx skillcheck diff main
 comparing against main
   2 skills there · 2 here · 1 retriggered
 
-changed hands — a request now reaches a different skill, and not one you were editing
+scenario regressed — a checked-in activation contract passed there and fails here
   ✖ "write release notes from the git log"  your scenarios file
-      changelog-writer → release-manager
+      changelog-writer → release-manager — expected changelog-writer, but release-manager ranked first
 
 lead narrowed — the same skill still wins, by a margin that is no longer safe
   ⚠ "Writes a changelog from git history."  changelog-writer's own description
       changelog-writer still wins, but its lead fell from 88% to 48%
 
-1 request changed hands unexpectedly, 1 lead narrowed
+1 scenario regressed, 1 lead narrowed
   4 probes: 1 from your scenarios file, 3 from your own descriptions. Same BM25 ranking as `why`, run twice.
 ```
 
@@ -135,19 +135,20 @@ Someone widened `release-manager` by one clause. Both files still lint clean, bo
 
 **Zero configuration.** The requests come from your scenarios file if you keep one, and otherwise from the skills' own descriptions — at *both* revisions, so an edited description is checked against the requests it used to claim as well as the ones it claims now.
 
-**And it can't cry wolf.** Every judgemental rule has to decide whether some arrangement of text is *bad*, and can be wrong about it. This decides nothing. It reports that an answer changed, and it changed because you changed the text that decides it. If you meant it, you nod and move on.
+**And it reads the contract, not just the winner.** A scenario may allow either of two skills, forbid only the dangerous one, or require that nothing fires. `diff` evaluates that assertion on both revisions: a passing contract that starts failing is a regression; a repair or a move between allowed winners stays green. If the assertion itself changed in the pull request, it has no stable meaning to compare, so `diff` leaves it to `skillcheck test` instead of inventing a before-state.
 
-What fails a build is deliberately narrow — the three outcomes nobody asked for:
+What fails a build is deliberately narrow — the four outcomes nobody asked for:
 
 | | |
 | --- | --- |
+| **scenario regressed** | a checked-in `expect`, `forbid`, or `expect: none` contract passed before and fails now |
 | **changed hands** | a request moved between two skills you *weren't* editing — the failure a normal diff cannot show |
 | **no longer reaches anything** | a request that used to find a skill now matches none |
 | **a new error** | a finding this change introduced, ignoring everything already broken |
 
-Everything else is reported and stays green: a narrowing lead, a request the skill you just rewrote now claims differently, a skill you added, a skill you renamed. A check that fails on the expected consequences of an ordinary edit gets switched off inside a week, and takes the useful signal with it.
+Everything else is reported and stays green: a repaired scenario, movement between allowed winners, a narrowing lead, a request the skill you just rewrote now claims differently, a skill you added, or a skill you renamed. A check that fails on the expected consequences of an ordinary edit gets switched off inside a week, and takes the useful signal with it.
 
-Adding a skill never fails for *existing* — a newcomer's own words contribute no probe, because they would trivially "change hands" to it. It can fail one way: by taking a request your scenarios file pins to something else. That is a human-written assertion being broken, and it is the same thing `skillcheck test` would tell you.
+Adding a skill never fails for its own description — a newcomer's own words would trivially "change hands" to it. It can still fail by breaking a stable scenario contract, which is the same regression `skillcheck test` reports on the current tree.
 
 That last row is also the baseline feature without the baseline file: a repo adopting skillcheck mid-life gets *only what this change broke* on its first run, with nothing to commit and nothing to keep current.
 
