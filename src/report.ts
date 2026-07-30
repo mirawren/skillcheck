@@ -1,5 +1,10 @@
 import pc from "picocolors";
-import type { DriftKind, DriftReport, ProbeDrift } from "./drift.js";
+import type {
+  DriftKind,
+  DriftReport,
+  ProbeDrift,
+  ScenarioContractChange,
+} from "./drift.js";
 import { describeLanguage } from "./languages/index.js";
 import { contenderTerms, type TriggerIndex, type TriggerReport } from "./match.js";
 import { REPO_URL, ruleDocUrl } from "./meta.js";
@@ -8,6 +13,8 @@ import { catalog } from "./rules/index.js";
 import { displayWidth, padDisplay } from "./script.js";
 import {
   describeExpectation,
+  normalizeScenarioContract,
+  type Scenario,
   type ScenarioCoverage,
   type ScenarioResult,
 } from "./scenarios.js";
@@ -146,7 +153,7 @@ function renderGithub(result: CheckResult, baselined: number): string {
   // GitHub Actions workflow commands → inline PR annotations.
   const lines = result.findings.map((f) => {
     const kind = f.severity === "error" ? "error" : "warning";
-    const file = toPosix(f.file);
+    const file = escapeWorkflowProperty(toPosix(f.file));
     const line = f.line ?? 1;
     const message = escapeWorkflowData(`[${f.ruleId}] ${f.message}`);
     return `::${kind} file=${file},line=${line}::${message}`;
@@ -157,6 +164,11 @@ function renderGithub(result: CheckResult, baselined: number): string {
 
 function escapeWorkflowData(s: string): string {
   return s.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+}
+
+/** GitHub command properties additionally reserve `:` and `,`. */
+function escapeWorkflowProperty(s: string): string {
+  return escapeWorkflowData(s).replace(/:/g, "%3A").replace(/,/g, "%2C");
 }
 
 /** Markdown report — used for `--format markdown` and the GitHub step summary. */
@@ -521,6 +533,8 @@ export function renderDrift(
   );
   out.push("");
 
+  appendPrettyScenarioChanges(out, scenarioChangesOf(report));
+
   for (const section of DRIFT_SECTIONS) {
     const group = report.drifts.filter((d) => d.kind === section.kind);
     if (group.length === 0) continue;
@@ -597,6 +611,7 @@ function driftSummaryLine(report: DriftReport, color: boolean): string {
   const introduced = report.findings.filter((f) => f.status === "new");
   const errors = introduced.filter((f) => f.severity === "error").length;
   const resolved = report.findings.filter((f) => f.status === "fixed").length;
+  const skipped = scenarioChangesOf(report).length;
 
   const parts: string[] = [];
   if (counts.regressed > 0) parts.push(`${plural(counts.regressed, "scenario")} regressed`);
@@ -608,6 +623,7 @@ function driftSummaryLine(report: DriftReport, color: boolean): string {
   if (counts.gained > 0) parts.push(`${plural(counts.gained, "request")} newly claimed`);
   if (introduced.length > 0) parts.push(`${plural(introduced.length, "new finding")}`);
   if (resolved > 0) parts.push(`${resolved} fixed`);
+  if (skipped > 0) parts.push(`${plural(skipped, "scenario contract")} not compared`);
 
   if (parts.length === 0) {
     const msg = `✔ no request changes hands — ${plural(report.probes.total, "probe")} rank the same either side`;
@@ -627,12 +643,21 @@ function renderDriftJson(report: DriftReport): string {
       ref: report.ref,
       skills: { before: report.skillsBefore, after: report.skillsAfter },
       probes: report.probes,
+      scenarioContracts: {
+        compared: report.probes.scenarios,
+        skipped: scenarioChangesOf(report).map((change) => ({
+          kind: change.kind,
+          before: change.before ? portableScenarioContract(change.before) : null,
+          after: change.after ? portableScenarioContract(change.after) : null,
+        })),
+      },
       changes: report.changes.map((c) => ({ ...c, file: toPosix(c.file) })),
       drifts: report.drifts.map((d) => ({
         kind: d.kind,
         prompt: d.probe.prompt,
         source: d.probe.source,
         owner: d.probe.owner ?? null,
+        contract: d.probe.scenario ? portableScenarioAssertion(d.probe.scenario) : null,
         before: d.before,
         after: d.after,
         marginBefore: Number(d.marginBefore.toFixed(4)),
@@ -652,6 +677,13 @@ function renderDriftJson(report: DriftReport): string {
  */
 function renderDriftGithub(report: DriftReport): string {
   const lines: string[] = [];
+  for (const change of scenarioChangesOf(report)) {
+    lines.push(
+      `::notice::${escapeWorkflowData(
+        `[scenario-contract] ${JSON.stringify(scenarioChangePrompt(change))} — ${scenarioChangeLabel(change)} and was not compared; ${scenarioChangeFollowup(change)}`,
+      )}`,
+    );
+  }
   for (const section of DRIFT_SECTIONS) {
     for (const drift of report.drifts.filter((d) => d.kind === section.kind)) {
       const kind = section.mark === "error" ? "error" : section.mark === "warning" ? "warning" : "notice";
@@ -664,7 +696,7 @@ function renderDriftGithub(report: DriftReport): string {
   for (const entry of report.findings.filter((f) => f.status === "new")) {
     const kind = entry.severity === "error" ? "error" : "warning";
     lines.push(
-      `::${kind} file=${toPosix(entry.file)},line=1::${escapeWorkflowData(
+      `::${kind} file=${escapeWorkflowProperty(toPosix(entry.file))},line=1::${escapeWorkflowData(
         `[${entry.ruleId}] ${entry.message}${entry.collateral ? " (introduced here, on a skill this change did not edit)" : " (introduced here)"}`,
       )}`,
     );
@@ -682,6 +714,7 @@ function renderDriftMarkdown(report: DriftReport): string {
     `Compared against \`${report.ref}\`: **${report.skillsBefore}** skill(s) there, **${report.skillsAfter}** here.`,
   );
   out.push("");
+  appendMarkdownScenarioChanges(out, scenarioChangesOf(report));
   if (report.drifts.length === 0 && report.findings.length === 0) {
     out.push(
       `✔ No request changes hands. ${plural(report.probes.total, "probe")} — ${report.probes.scenarios} from the scenarios file, ${report.probes.descriptions} from the skills' own descriptions — rank the same either side.`,
@@ -711,6 +744,91 @@ function renderDriftMarkdown(report: DriftReport): string {
   out.push("");
   out.push(`**${driftSummaryLine(report, false)}**`);
   return out.join("\n");
+}
+
+function portableScenarioAssertion(scenario: Scenario): {
+  expect: string | string[];
+  forbid: string[];
+} {
+  const normalized = normalizeScenarioContract(scenario);
+  return {
+    expect: normalized.expectNone ? "none" : normalized.expect,
+    forbid: normalized.forbid,
+  };
+}
+
+/** Preserve source compatibility for callers constructing pre-v2 report objects. */
+function scenarioChangesOf(report: DriftReport): readonly ScenarioContractChange[] {
+  return report.scenarioChanges ?? [];
+}
+
+function portableScenarioContract(scenario: Scenario): {
+  prompt: string;
+  expect: string | string[];
+  forbid: string[];
+} {
+  const normalized = normalizeScenarioContract(scenario);
+  return { prompt: normalized.prompt, ...portableScenarioAssertion(normalized) };
+}
+
+function scenarioChangePrompt(change: ScenarioContractChange): string {
+  return change.kind === "removed" ? change.before.prompt : change.after.prompt;
+}
+
+function scenarioChangeLabel(change: ScenarioContractChange): string {
+  if (change.kind === "added") return "scenario added";
+  if (change.kind === "removed") return "scenario assertion removed";
+  return "scenario assertion changed";
+}
+
+function scenarioChangeFollowup(change: ScenarioContractChange): string {
+  return change.kind === "removed"
+    ? "review the removal to confirm that coverage was intentionally dropped"
+    : "skillcheck test checks the current assertion";
+}
+
+function appendPrettyScenarioChanges(
+  out: string[],
+  changes: readonly ScenarioContractChange[],
+): void {
+  if (changes.length === 0) return;
+  out.push(
+    `${pc.bold("scenario contracts not compared")} ${pc.dim("— no identical assertion exists on both revisions")}`,
+  );
+  for (const change of changes) {
+    out.push(`  ${pc.dim("·")} ${JSON.stringify(scenarioChangePrompt(change))}  ${scenarioChangeLabel(change)}`);
+    if (change.kind === "changed") {
+      out.push(
+        pc.dim(
+          `      ${describeExpectation(change.before)} → ${describeExpectation(change.after)}; ${scenarioChangeFollowup(change)}.`,
+        ),
+      );
+    } else {
+      const contract = change.kind === "removed" ? change.before : change.after;
+      out.push(pc.dim(`      ${describeExpectation(contract)}; ${scenarioChangeFollowup(change)}.`));
+    }
+  }
+  out.push("");
+}
+
+function appendMarkdownScenarioChanges(
+  out: string[],
+  changes: readonly ScenarioContractChange[],
+): void {
+  if (changes.length === 0) return;
+  out.push("### Scenario contracts not compared", "");
+  out.push("No identical assertion exists on both revisions, so these are named for review instead of being assigned a historical result.", "");
+  out.push("| Change | Request | Before | Now |", "| --- | --- | --- | --- |");
+  for (const change of changes) {
+    out.push(
+      `| ${scenarioChangeLabel(change)} | ${mdCell(scenarioChangePrompt(change))} | ${mdCell(change.before ? describeExpectation(change.before) : "—")} | ${mdCell(change.after ? describeExpectation(change.after) : "—")} |`,
+    );
+  }
+  out.push(
+    "",
+    "`skillcheck test` checks added and changed assertions against the current corpus. Review removed assertions to confirm that coverage was intentionally dropped.",
+    "",
+  );
 }
 
 export type ScenarioReportFormat = "pretty" | "json" | "markdown" | "github";
@@ -798,7 +916,7 @@ function appendPrettyCoverage(out: string[], coverage: ScenarioCoverage): void {
   out.push("");
   out.push(
     pc.bold(
-      `Assertion coverage: ${coverage.asserted.length}/${coverage.total} ${coverage.total === 1 ? "skill" : "skills"} named in expect or forbid`,
+      `Assertion coverage: ${coverage.asserted.length}/${coverage.total} distinct skill ${coverage.total === 1 ? "name" : "names"} referenced by expect or forbid`,
     ),
   );
   if (coverage.unasserted.length > 0) {
@@ -827,7 +945,7 @@ function renderScenarioMarkdown(
   if (coverage) {
     out.push("", "### Assertion coverage", "");
     out.push(
-      `**${coverage.asserted.length} of ${plural(coverage.total, "skill")}** named in at least one \`expect\` or \`forbid\` assertion.`,
+      `**${coverage.asserted.length} of ${coverage.total} distinct skill ${coverage.total === 1 ? "name" : "names"}** referenced by at least one \`expect\` or \`forbid\` assertion.`,
     );
     if (coverage.unasserted.length > 0) {
       const shown = coverage.unasserted.slice(0, 20);
@@ -845,7 +963,9 @@ function renderScenarioGithub(
   results: readonly ScenarioResult[],
   options: ScenarioRenderOptions,
 ): string {
-  const location = options.source ? ` file=${toPosix(options.source)},line=1` : "";
+  const location = options.source
+    ? ` file=${escapeWorkflowProperty(toPosix(options.source))},line=1`
+    : "";
   const out: string[] = [];
   for (const result of results) {
     if (result.status === "pass") continue;
@@ -858,8 +978,15 @@ function renderScenarioGithub(
   out.push(scenarioSummary(results));
   if (options.coverage) {
     out.push(
-      `Assertion coverage: ${options.coverage.asserted.length}/${options.coverage.total} ${options.coverage.total === 1 ? "skill" : "skills"} named in expect or forbid`,
+      `Assertion coverage: ${options.coverage.asserted.length}/${options.coverage.total} distinct skill ${options.coverage.total === 1 ? "name" : "names"} referenced by expect or forbid`,
     );
+    if (options.coverage.unasserted.length > 0) {
+      const shown = options.coverage.unasserted.slice(0, 20);
+      const rest = options.coverage.unasserted.length - shown.length;
+      out.push(
+        `Not named: ${shown.map(escapeWorkflowData).join(", ")}${rest > 0 ? `, and ${rest} more` : ""}`,
+      );
+    }
   }
   return out.join("\n");
 }

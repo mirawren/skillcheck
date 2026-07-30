@@ -81,14 +81,37 @@ export interface ScenarioResult {
   reason?: string;
 }
 
-/** Which scanned skills are named by at least one direct activation assertion. */
+/** Which distinct, addressable skill names appear in direct activation assertions. */
 export interface ScenarioCoverage {
-  /** Number of distinct skills in the trigger index. */
+  /** Number of distinct skill names in the trigger index. */
   total: number;
   /** Existing skill names mentioned by `expect` or `forbid`. */
   asserted: string[];
   /** Existing skill names never mentioned by either assertion. */
   unasserted: string[];
+}
+
+/**
+ * Canonical form of a scenario contract for comparisons and machine output.
+ *
+ * List order and repeated names do not change what a contract permits. Keeping
+ * that normalization in one place prevents a harmless YAML cleanup from
+ * looking like an edited assertion in `skillcheck diff`.
+ */
+export function normalizeScenarioContract(scenario: Scenario): Scenario {
+  const uniqueSorted = (names: readonly string[]) =>
+    [...new Set(names.map((name) => name.trim()))].sort();
+  return {
+    prompt: scenario.prompt.trim(),
+    expect: scenario.expectNone ? [] : uniqueSorted(scenario.expect),
+    forbid: uniqueSorted(scenario.forbid),
+    expectNone: scenario.expectNone,
+  };
+}
+
+/** Semantic identity of a scenario assertion. */
+export function scenarioContractKey(scenario: Scenario): string {
+  return JSON.stringify(normalizeScenarioContract(scenario));
 }
 
 /** Thrown for a malformed scenarios file; the CLI maps this to exit code 2. */

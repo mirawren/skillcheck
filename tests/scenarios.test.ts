@@ -5,6 +5,7 @@ import {
   FORMAT_VERSION,
   parseScenarios,
   runScenarios,
+  scenarioContractKey,
   scenarioCoverage,
   type Scenario,
   ScenarioError,
@@ -142,6 +143,21 @@ describe("parseScenarios", () => {
       expect(() => parseScenarios('version: "1"\nscenarios: []\n', "f.yaml")).toThrow(/positive integer/);
       expect(() => parseScenarios("version: 0\nscenarios: []\n", "f.yaml")).toThrow(/positive integer/);
     });
+  });
+});
+
+describe("scenarioContractKey", () => {
+  it("ignores list order and repeated names", () => {
+    const first = scenario("  export this  ", {
+      expect: ["json-export", "csv-export", "json-export"],
+      forbid: ["delete-data", "delete-data"],
+    });
+    const second = scenario("export this", {
+      expect: ["csv-export", "json-export"],
+      forbid: ["delete-data"],
+    });
+
+    expect(scenarioContractKey(first)).toBe(scenarioContractKey(second));
   });
 });
 
@@ -287,6 +303,29 @@ describe("scenarioCoverage", () => {
       asserted: ["invoice-parser", "pdf-extract"],
       unasserted: [],
     });
+  });
+
+  it("counts duplicate declarations as one addressable skill name", () => {
+    const duplicateIndex = buildIndex(
+      collectDocs([
+        tmpRepo({
+          "skills/first/SKILL.md": skillMd(
+            "duplicate",
+            "Handles the first workflow. Use when the user asks for the first workflow.",
+          ),
+          "skills/second/SKILL.md": skillMd(
+            "duplicate",
+            "Handles the second workflow. Use when the user asks for the second workflow.",
+          ),
+        }),
+      ]).skills,
+    );
+
+    expect(
+      scenarioCoverage(duplicateIndex, [
+        scenario("run the duplicate workflow", { expect: ["duplicate"] }),
+      ]),
+    ).toEqual({ total: 1, asserted: ["duplicate"], unasserted: [] });
   });
 });
 

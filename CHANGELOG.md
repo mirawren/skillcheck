@@ -4,10 +4,14 @@ Notable changes. This project follows [semantic versioning](https://semver.org/)
 
 ## Unreleased
 
-- `skillcheck diff` now evaluates stable scenario assertions on both revisions instead of treating every winner change as a regression. Repairs and movement between allowed winners stay green; `expect`, `forbid`, and `expect: none` regressions fail. Scenario assertions edited in the same change are left to `skillcheck test` because they have no stable contract to compare. Multiple contracts may share one prompt; every assertion is evaluated.
-- `skillcheck test` now reports which skills are named by a direct `expect` or `forbid` assertion. Its GitHub output annotates failed and close contracts, `--summary` writes a Markdown scenario table, and JSON output exposes asserted and unasserted skill names.
+- `skillcheck diff` now evaluates stable scenario assertions on both revisions instead of treating every winner change as a regression. Repairs and movement between allowed winners stay green; `expect`, `forbid`, and `expect: none` regressions fail. Passing contracts that become too close to depend on are reported without failing. Multiple contracts may share one prompt, and every assertion is evaluated.
+- Added, edited, and removed scenario contracts are named as not compared instead of disappearing. The version 2 drift JSON envelope exposes them under `scenarioContracts.skipped` and includes a normalized `contract` on every scenario drift, so same-prompt assertions remain distinguishable to bots. Auto-discovery follows `.yaml`/`.yml` renames with canonical priority; an explicit `--scenarios` path remains exact.
+- `skillcheck test` now reports which distinct skill names appear in a direct `expect` or `forbid` assertion. Its GitHub output annotates failed and close contracts, names up to 20 unasserted skills and counts the rest, `--summary` writes a Markdown scenario table, and JSON output exposes the complete asserted and unasserted lists.
 - The default check now exits 2 when its paths and ignore patterns discover no skills or plugin manifests, instead of reporting `100/100 (A)` for checking nothing. Plugin-only repositories remain valid.
-- Malformed percent escapes in Markdown links now produce ordinary `broken-references` findings instead of crashing the check. Scenario comparison notices move to stderr for machine formats, so `skillcheck diff --format json` remains parseable.
+- Malformed percent escapes in Markdown links are now checked as literal paths instead of crashing; a missing literal target produces the ordinary `broken-references` finding. Scenario comparison changes are represented structurally in machine output, so `skillcheck diff --format json` stays parseable without hiding skipped contracts.
+- The Action now runs trigger and drift reporting after an earlier check fails, unless the job was cancelled. Its diff step honors the requested trigger/diff output format and `summary` setting instead of forcing GitHub output and a job summary; check-only SARIF and badge selections use GitHub annotations for the auxiliary reports.
+- GitHub coverage output now escapes untrusted skill names, and annotation file properties escape workflow-command delimiters. Drift batches scenario validation once per revision instead of rebuilding the corpus name set for every assertion.
+- `skillcheck test` and `skillcheck diff` now reject check-only SARIF and badge formats with a usage error instead of silently falling back to pretty output.
 
 ## 1.0.1 — 2026-07-30
 

@@ -137,7 +137,7 @@ Someone widened `release-manager` by one clause. Both files still lint clean, bo
 
 **Zero configuration.** The requests come from your scenarios file if you keep one, and otherwise from the skills' own descriptions — at *both* revisions, so an edited description is checked against the requests it used to claim as well as the ones it claims now.
 
-**And it reads the contract, not just the winner.** A scenario may allow either of two skills, forbid only the dangerous one, or require that nothing fires. `diff` evaluates that assertion on both revisions: a passing contract that starts failing is a regression; a repair or a move between allowed winners stays green. If the assertion itself changed in the pull request, it has no stable meaning to compare, so `diff` leaves it to `skillcheck test` instead of inventing a before-state.
+**And it reads the contract, not just the winner.** A scenario may allow either of two skills, forbid only the dangerous one, or require that nothing fires. `diff` evaluates that assertion on both revisions: a passing contract that starts failing is a regression; a repair or a move between allowed winners stays green. Added, edited, and removed assertions have no identical contract on both sides, so `diff` names each one as not compared instead of inventing a before-state or silently dropping coverage. `skillcheck test` checks current assertions; removals are called out for review.
 
 What fails a build is deliberately narrow — the four outcomes nobody asked for:
 
@@ -159,6 +159,8 @@ npx skillcheck diff                 # against your last commit
 npx skillcheck diff origin/main     # against a base branch
 npx skillcheck diff --format json   # for a bot to comment with
 ```
+
+The version 2 JSON report keeps each scenario's normalized `expect` and `forbid` under `drifts[].contract`, and lists added, edited, or removed assertions under `scenarioContracts.skipped`. A bot never has to parse the human diagnosis to tell two contracts with the same prompt apart.
 
 Reading a past revision uses `git cat-file`, so nothing is checked out, stashed or fetched, and your working tree is never touched.
 
@@ -202,7 +204,7 @@ skillcheck.scenarios.yaml — 3 scenario(s) against 5 skill(s)
 
 2 passed, 1 failed (3 scenarios)
 
-Assertion coverage: 2/5 skills named in expect or forbid
+Assertion coverage: 2/5 distinct skill names referenced by expect or forbid
   Not named: grill-me, release-manager, review-me
   Add expect or forbid scenarios for requests at those skills' boundaries.
 ```
@@ -211,7 +213,7 @@ That second line is the `trigger-shadowing` warning cashed out: the broad `relea
 
 Now "my skill stopped triggering after I added another one" is a failed build with a diff attached, instead of a support thread. Scoring is deterministic — a scenario changes only when *you* change the text that decides.
 
-The coverage line keeps a small green suite honest. It reports which scanned skills are named by at least one `expect` or `forbid` assertion, and lists the ones that are not. It is deliberately informational: `expect: none` still protects the corpus boundary, and one arbitrary percentage should not decide whether a pull request ships.
+The coverage line keeps a small green suite honest. It reports which distinct scanned skill names appear in at least one `expect` or `forbid` assertion, shows a bounded list of names that do not, and counts any remainder; JSON contains the complete lists. It is deliberately informational: `expect: none` still protects the corpus boundary, and one arbitrary percentage should not decide whether a pull request ships.
 
 **`forbid` is the one that scales.** Past a handful of skills, `expect` over-specifies: it pins an exact winner, so an unrelated edit fails a scenario that was never really about that. `forbid` states what you actually mean — *the destructive one never takes this* — and keeps holding as the repo grows. It's also the right shape when being wrong is expensive: you don't need to know which skill handles a request to know which one must not. A forbidden skill that merely *trails* the winner by a hair is reported too, because that's one wording tweak from taking it.
 
@@ -328,7 +330,7 @@ jobs:
           diff: ${{ github.event.pull_request.base.sha }}
 ```
 
-Findings and failing trigger contracts appear as PR annotations, with both lint and scenario tables in the job summary. The action exposes `score`, `grade`, `errors`, `warnings` and `skills` as outputs, so you can gate on the score or commit a badge from the same run. If a scenarios file exists, it runs those too and shows direct assertion coverage.
+Findings and failing trigger contracts appear as PR annotations, with both lint and scenario tables in the job summary. Trigger and drift reporting still run after an earlier check fails, so the first red result does not hide the rest of the review. The action exposes `score`, `grade`, `errors`, `warnings` and `skills` as outputs, so you can gate on the score or commit a badge from the same run. If a scenarios file exists, it runs those too and shows direct assertion coverage. SARIF and badge are check-only formats; when either is selected, auxiliary trigger and diff reports remain visible as GitHub annotations.
 
 `diff` is what makes the check about *this* pull request: it adds the activation comparison above, and its findings land in the job summary as a table you can read without expanding a log. Leave it out and everything else still works — but a shallow clone can't read the base revision, which is why `fetch-depth: 0` is there. `skillcheck init` writes all of this for you.
 

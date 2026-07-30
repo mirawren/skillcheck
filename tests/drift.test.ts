@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
@@ -113,6 +113,13 @@ describe("comparing two revisions of a corpus", () => {
     expect(report.probes.scenarios).toBe(2);
     expect(report.drifts.filter((drift) => drift.probe.source === "scenario").map((d) => d.kind))
       .toEqual(["regressed", "allowed"]);
+    const json = JSON.parse(renderDrift(report, "json"));
+    expect(json.drifts.filter((drift: { source: string }) => drift.source === "scenario").map(
+      (drift: { contract: unknown }) => drift.contract,
+    )).toEqual([
+      { expect: ["changelog-writer"], forbid: [] },
+      { expect: ["changelog-writer", "release-manager"], forbid: [] },
+    ]);
     expect(driftFailed(report)).toBe(true);
   });
 
@@ -156,6 +163,32 @@ describe("comparing two revisions of a corpus", () => {
     expect(narrowed).toBeDefined();
     expect(narrowed!.marginAfter).toBeLessThan(narrowed!.marginBefore);
     // A narrowing lead is information, not a broken build.
+    expect(driftFailed(report)).toBe(false);
+  });
+
+  it("reports when a passing scenario becomes too close to depend on", () => {
+    const contender = (fillerRepeats: number) =>
+      skill(
+        "release-manager",
+        "Writes release notes from git history. " +
+          `Manages ${Array(fillerRepeats).fill("package version publishing artifact registry deployment pipeline automation workflow configuration dependency").join(" ")}. ` +
+          "Use when the user asks to write release notes from git history.",
+      );
+    const report = compareCorpora({
+      ref: "main",
+      before: [NARROW, contender(7)],
+      after: [NARROW, contender(3)],
+      scenarios: [
+        scenario("write release notes from the git log", { expect: ["changelog-writer"] }),
+      ],
+    });
+
+    const warning = report.drifts.find((drift) => drift.probe.source === "scenario");
+    expect(warning?.kind).toBe("narrowed");
+    expect(warning?.marginBefore).toBeGreaterThanOrEqual(0.15);
+    expect(warning?.marginAfter).toBeLessThan(0.15);
+    expect(warning!.marginBefore - warning!.marginAfter).toBeLessThan(0.15);
+    expect(warning?.detail).toContain("too close to depend on");
     expect(driftFailed(report)).toBe(false);
   });
 
@@ -547,8 +580,148 @@ describe("the diff command", () => {
 
     const machine = captureIo();
     expect(runCli(["diff", "--format", "json"], machine.io)).toBe(0);
-    expect(() => JSON.parse(machine.out())).not.toThrow();
-    expect(machine.err()).toContain("assertion changed");
+    const parsed = JSON.parse(machine.out());
+    expect(parsed.scenarioContracts.skipped).toMatchObject([
+      { kind: "changed", before: { expect: ["alpha"] }, after: { expect: ["beta"] } },
+    ]);
+    expect(machine.err()).toBe("");
+  });
+
+  it("keeps contracts when a supported scenarios file changes extension", () => {
+    const root = gitRepo({
+      "skills/changelog-writer/SKILL.md": skillMd(
+        "changelog-writer",
+        "Writes a changelog from git history. Use when the user asks for a changelog or release notes.",
+      ),
+      "skills/release-manager/SKILL.md": skillMd(
+        "release-manager",
+        "Bumps the version and tags it. Use when the user asks to cut a release.",
+      ),
+      "skillcheck.scenarios.yml":
+        'version: 1\nscenarios:\n  - prompt: "write release notes from the git log"\n    expect: changelog-writer\n',
+    });
+    renameSync(
+      join(root, "skillcheck.scenarios.yml"),
+      join(root, "skillcheck.scenarios.yaml"),
+    );
+    write(
+      root,
+      "skills/release-manager/SKILL.md",
+      skillMd(
+        "release-manager",
+        "Writes release notes from git history, bumps versions and tags releases. Use when the user asks to write release notes or cut a release.",
+      ),
+    );
+    process.chdir(root);
+    const cap = captureIo();
+    expect(runCli(["diff"], cap.io)).toBe(1);
+    expect(stripVTControlCharacters(cap.out())).toContain("scenario regressed");
+  });
+
+  it("uses canonical extension priority when both scenario files existed at the base", () => {
+    const root = gitRepo({
+      "skills/changelog-writer/SKILL.md": skillMd(
+        "changelog-writer",
+        "Writes a changelog from git history. Use when the user asks for a changelog or release notes.",
+      ),
+      "skills/release-manager/SKILL.md": skillMd(
+        "release-manager",
+        "Bumps the version and tags it. Use when the user asks to cut a release.",
+      ),
+      "skillcheck.scenarios.yaml":
+        'version: 1\nscenarios:\n  - prompt: "write release notes from the git log"\n    expect: changelog-writer\n',
+      "skillcheck.scenarios.yml":
+        'version: 1\nscenarios:\n  - prompt: "write release notes from the git log"\n    expect: release-manager\n',
+    });
+    unlinkSync(join(root, "skillcheck.scenarios.yaml"));
+    write(
+      root,
+      "skillcheck.scenarios.yml",
+      'version: 1\nscenarios:\n  - prompt: "write release notes from the git log"\n    expect: changelog-writer\n',
+    );
+    write(
+      root,
+      "skills/release-manager/SKILL.md",
+      skillMd(
+        "release-manager",
+        "Writes release notes from git history, bumps versions and tags releases. Use when the user asks to write release notes or cut a release.",
+      ),
+    );
+
+    process.chdir(root);
+    const cap = captureIo();
+    expect(runCli(["diff"], cap.io)).toBe(1);
+    expect(stripVTControlCharacters(cap.out())).toContain("scenario regressed");
+  });
+
+  it("does not switch extensions for an explicit scenarios path", () => {
+    const root = gitRepo({
+      "skills/changelog-writer/SKILL.md": skillMd(
+        "changelog-writer",
+        "Writes a changelog from git history. Use when the user asks for a changelog or release notes.",
+      ),
+      "skills/release-manager/SKILL.md": skillMd(
+        "release-manager",
+        "Bumps the version and tags it. Use when the user asks to cut a release.",
+      ),
+      "skillcheck.scenarios.yaml":
+        'version: 1\nscenarios:\n  - prompt: "write release notes from the git log"\n    expect: changelog-writer\n',
+    });
+    write(
+      root,
+      "skillcheck.scenarios.yml",
+      'version: 1\nscenarios:\n  - prompt: "write release notes from the git log"\n    expect: changelog-writer\n',
+    );
+
+    process.chdir(root);
+    const cap = captureIo();
+    expect(runCli(["diff", "--scenarios", "skillcheck.scenarios.yml"], cap.io)).toBe(0);
+    const out = stripVTControlCharacters(cap.out());
+    expect(out).toContain("scenario added");
+    expect(out).toContain("not compared");
+    expect(out).not.toContain("scenario regressed");
+  });
+
+  it("reports a removed scenario contract instead of silently dropping it", () => {
+    const root = gitRepo({
+      "skills/alpha/SKILL.md": skillMd(
+        "alpha",
+        "Handles alpha reports. Use when the user asks to write an alpha report.",
+      ),
+      "skillcheck.scenarios.yaml":
+        'version: 1\nscenarios:\n  - prompt: "write an alpha report"\n    expect: alpha\n',
+    });
+    unlinkSync(join(root, "skillcheck.scenarios.yaml"));
+
+    process.chdir(root);
+    const pretty = captureIo();
+    expect(runCli(["diff"], pretty.io)).toBe(0);
+    expect(stripVTControlCharacters(pretty.out())).toContain("scenario assertion removed");
+    expect(stripVTControlCharacters(pretty.out())).toContain("coverage was intentionally dropped");
+
+    const machine = captureIo();
+    expect(runCli(["diff", "--format", "json"], machine.io)).toBe(0);
+    expect(JSON.parse(machine.out()).scenarioContracts.skipped).toMatchObject([
+      { kind: "removed", before: { prompt: "write an alpha report", expect: ["alpha"] }, after: null },
+    ]);
+  });
+
+  it("does not misreport a malformed current scenario file as removed contracts", () => {
+    const root = gitRepo({
+      "skills/alpha/SKILL.md": skillMd(
+        "alpha",
+        "Handles alpha reports. Use when the user asks to write an alpha report.",
+      ),
+      "skillcheck.scenarios.yaml":
+        'version: 1\nscenarios:\n  - prompt: "write an alpha report"\n    expect: alpha\n',
+    });
+    write(root, "skillcheck.scenarios.yaml", "scenarios: [prompt: broken: yaml\n");
+
+    process.chdir(root);
+    const cap = captureIo();
+    expect(runCli(["diff", "--format", "json"], cap.io)).toBe(0);
+    expect(JSON.parse(cap.out()).scenarioContracts.skipped).toEqual([]);
+    expect(cap.err()).toContain("ignoring skillcheck.scenarios.yaml");
   });
 
   it("exits clean, and says what it checked, when nothing moved", () => {
@@ -585,6 +758,17 @@ describe("the diff command", () => {
     const cap = captureIo();
     expect(runCli(["diff", "skills", "--format", "json"], cap.io)).toBe(0);
     expect(JSON.parse(cap.out()).ref).toBe("HEAD");
+  });
+
+  it("rejects check-only output formats instead of silently printing pretty output", () => {
+    const root = gitRepo({
+      "skills/one/SKILL.md": skillMd("one", "Does A. Use when the user asks for A."),
+    });
+    process.chdir(root);
+    const cap = captureIo();
+
+    expect(runCli(["diff", "--format", "sarif"], cap.io)).toBe(2);
+    expect(cap.err()).toContain("diff does not support --format sarif");
   });
 
   it("reports a missing revision as a usage error, not a finding", () => {

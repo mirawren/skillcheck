@@ -269,12 +269,21 @@ describe("broken-references", () => {
     expect(runCheck([root]).findings.filter((f) => f.ruleId === "broken-references")).toEqual([]);
   });
 
-  it("reports malformed percent escapes as broken references", () => {
+  it("checks a malformed percent escape as a literal path without crashing", () => {
     const findings = brokenReferences.check(doc({ body: "[bad](bad%ZZ.md)" }), emptyCtx);
 
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({ ruleId: "broken-references", severity: "error" });
     expect(findings[0].message).toContain("bad%ZZ.md");
+  });
+
+  it("accepts a malformed percent escape when the literal target exists", () => {
+    const root = tmpRepo({
+      "skills/demo/SKILL.md": skillMd("demo", "Demo skill. Use when demoing.", "[odd](bad%ZZ.md)"),
+      "skills/demo/bad%ZZ.md": "# odd but valid filename",
+    });
+
+    expect(runCheck([root]).findings.filter((f) => f.ruleId === "broken-references")).toEqual([]);
   });
 });
 

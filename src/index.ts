@@ -42,6 +42,8 @@ export {
   parseScenarios,
   runScenarios,
   scenarioCoverage,
+  normalizeScenarioContract,
+  scenarioContractKey,
   findScenarioFile,
   ScenarioError,
 } from "./scenarios.js";
@@ -66,6 +68,7 @@ export type {
   Probe,
   ProbeDrift,
   ProbeSource,
+  ScenarioContractChange,
   SkillChange,
 } from "./drift.js";
 export { readSkillsAtRef, repoRoot, resolveRef, RevisionError } from "./revision.js";

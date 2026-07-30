@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { isDiscoverableSkillPath } from "./discover.js";
 import { parseSkillText } from "./parse.js";
 import type { SkillDoc } from "./types.js";
@@ -143,12 +143,13 @@ function listSkills(root: string, ref: string, roots: readonly string[]): Revisi
 }
 
 /** `path` expressed relative to the repo root, as a git pathspec. */
-function repoRelative(root: string, path: string): string {
+function repoRelative(root: string, path: string, allowMissing = false): string {
   const abs = isAbsolute(path) ? resolve(path) : resolve(process.cwd(), path);
   // Git and Node can spell the same Windows path differently (notably a long
   // user profile versus its 8.3 alias). Compare the paths the filesystem says
   // they are, not those two textual spellings.
-  const rel = relative(realpathSync.native(root), realpathSync.native(abs));
+  const target = allowMissing ? realpathWithMissingTail(abs) : realpathSync.native(abs);
+  const rel = relative(realpathSync.native(root), target);
   if (!rel) return ".";
   if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
     throw new RevisionError(
@@ -156,6 +157,32 @@ function repoRelative(root: string, path: string): string {
     );
   }
   return rel.split(sep).join("/");
+}
+
+/**
+ * Canonicalize the existing part of a path while preserving a missing tail.
+ *
+ * Historical files routinely do not exist in the working tree: a scenario file
+ * may have been renamed or deleted in the change being compared. Resolving only
+ * lexically would mishandle a symlinked parent; requiring the leaf to exist
+ * makes that history unreadable. Walking upward gives us both containment and a
+ * usable git pathspec.
+ */
+function realpathWithMissingTail(path: string): string {
+  let cursor = resolve(path);
+  const tail: string[] = [];
+  while (true) {
+    try {
+      return resolve(realpathSync.native(cursor), ...tail.reverse());
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") throw err;
+      const parent = dirname(cursor);
+      if (parent === cursor) throw err;
+      tail.push(basename(cursor));
+      cursor = parent;
+    }
+  }
 }
 
 /**
@@ -209,7 +236,7 @@ export function readFileAtRef(
 ): string | null {
   const root = repoRoot(cwd);
   const commit = resolveRef(root, ref);
-  const spec = repoRelative(root, path);
+  const spec = repoRelative(root, path, true);
   const result = git(root, ["cat-file", "-e", `${commit}:${spec}`]);
   if (result.status !== 0) return null;
   const blob = git(root, ["cat-file", "blob", `${commit}:${spec}`]);

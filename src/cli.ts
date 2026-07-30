@@ -13,7 +13,7 @@ import {
   serializeBaseline,
 } from "./baseline.js";
 import { ConfigError, globToMatcher, loadConfig, type SkillcheckConfig } from "./config.js";
-import { compareCorpora, driftFailed } from "./drift.js";
+import { compareCorpora, driftFailed, type ScenarioContractChange } from "./drift.js";
 import { type FileFixResult, fixableRules, fixDocs, MAX_PASSES } from "./fix.js";
 import { collectDocs, evaluate, suppressedRules } from "./index.js";
 import { runInit } from "./init.js";
@@ -39,11 +39,14 @@ import { computeScore } from "./score.js";
 import {
   findScenarioFile,
   loadScenarios,
+  normalizeScenarioContract,
   parseScenarios,
   runScenarios,
+  scenarioContractKey,
   scenarioCoverage,
   SCENARIO_FILENAMES,
   ScenarioError,
+  type Scenario,
   type ScenarioSeed,
 } from "./scenarios.js";
 import type { CheckContext, CheckResult, Finding, Rule, SkillDoc } from "./types.js";
@@ -82,7 +85,8 @@ Usage
 Options
   --format <pretty|json|github|sarif|badge|markdown>
                           pretty (default) · github = PR annotations ·
-                          sarif = code scanning · badge = shields.io endpoint JSON
+                          sarif = code scanning · badge = shields.io endpoint JSON ·
+                          sarif and badge apply to the default check only
   --fix                   apply safe automatic fixes, then re-check
   --fix-dry-run           report what --fix would change, write nothing
   --config <path>         config file (default: nearest skillcheck.config.json)
@@ -543,6 +547,7 @@ const DEFAULT_DIFF_REF = "HEAD";
  * which for this command is worse than an error.
  */
 function commandDiff(args: Args, io: CliIO): number {
+  const format = scenarioReportFormat(args.format, "diff");
   const first = args.positional[0];
   const looksLikePath = first !== undefined && existsSync(first);
   const ref = first !== undefined && !looksLikePath ? first : DEFAULT_DIFF_REF;
@@ -568,19 +573,34 @@ function commandDiff(args: Args, io: CliIO): number {
   // repo has them — but an unparseable file must not take the whole comparison
   // down, because drift is still fully answerable from the descriptions alone.
   let scenarios: ReturnType<typeof loadScenarios> = [];
-  const scenarioFile = findScenarioFile(args.scenarios);
+  let scenarioChanges: ScenarioContractChange[] = [];
+  const autoScenarios = args.scenarios === undefined;
+  const currentScenarioFile = findScenarioFile(args.scenarios);
+  // A scenarios file may have been deleted in the working tree. Keep a
+  // canonical placeholder so the historical side is still discoverable and
+  // the removed contracts are visible in the report.
+  const scenarioFile =
+    currentScenarioFile ??
+    (autoScenarios ? resolve(process.cwd(), SCENARIO_FILENAMES[0]) : null);
   if (scenarioFile) {
+    let currentScenariosReadable = true;
     try {
-      scenarios = loadScenarios(scenarioFile);
+      if (currentScenarioFile) scenarios = loadScenarios(currentScenarioFile);
     } catch (err) {
+      currentScenariosReadable = false;
       io.err(pc.yellow(`skillcheck: ignoring ${displayPath(scenarioFile)} — ${(err as Error).message}\n`));
     }
-    scenarios = assertedAtBothRevisions(
-      scenarios,
-      scenarioFile,
-      ref,
-      args.format === "pretty" ? io.out : io.err,
-    );
+    if (currentScenariosReadable) {
+      const selection = assertedAtBothRevisions(
+        scenarios,
+        scenarioFile,
+        ref,
+        autoScenarios,
+        io.err,
+      );
+      scenarios = selection.scenarios;
+      scenarioChanges = selection.changes;
+    }
   }
 
   const report = compareCorpora({
@@ -588,13 +608,10 @@ function commandDiff(args: Args, io: CliIO): number {
     before,
     after,
     scenarios,
+    scenarioChanges,
     findingsBefore: evaluate(before, [], historicalConfig(config)).findings,
     findingsAfter: evaluate(after, [], historicalConfig(config)).findings,
   });
-  const format =
-    args.format === "json" || args.format === "markdown" || args.format === "github"
-      ? args.format
-      : "pretty";
   io.out(`${renderDrift(report, format)}\n`);
   if (args.summary) emitStepSummary(io, renderDrift(report, "markdown"));
 
@@ -616,62 +633,108 @@ function commandDiff(args: Args, io: CliIO): number {
  * needs a question both sides were asked. What the new prompt asserts is still
  * checked — by `skillcheck test`, against the corpus it was written for.
  */
-function assertedAtBothRevisions(
-  scenarios: readonly ReturnType<typeof loadScenarios>[number][],
-  scenarioFile: string,
-  ref: string,
-  writeNotice: (text: string) => void,
-): ReturnType<typeof loadScenarios> {
-  if (scenarios.length === 0) return [...scenarios];
-
-  let before: string | null = null;
-  try {
-    before = readFileAtRef(ref, scenarioFile);
-  } catch {
-    // The file's history is unreadable — fall back to comparing nothing from it
-    // rather than to inventing "before" answers.
-    return [];
-  }
-  if (before === null) return [];
-
-  let baseline: ReturnType<typeof loadScenarios>;
-  try {
-    baseline = parseScenarios(before, `${displayPath(scenarioFile)}@${ref}`);
-  } catch {
-    return [];
-  }
-
-  const baselinePrompts = new Set(baseline.map((s) => s.prompt.trim()));
-  const baselineContracts = new Set(baseline.map(scenarioContractKey));
-  const kept = scenarios.filter((s) => baselineContracts.has(scenarioContractKey(s)));
-  const added = scenarios.filter((s) => !baselinePrompts.has(s.prompt.trim())).length;
-  const changed = scenarios.length - kept.length - added;
-  if (added > 0) {
-    writeNotice(
-      pc.dim(
-        `  ${plural(added, "scenario")} added in this change ${added === 1 ? "is" : "are"} not compared — ` +
-          `${added === 1 ? "it has" : "they have"} no answer at ${ref}. \`skillcheck test\` checks ${added === 1 ? "it" : "them"}.\n`,
-      ),
-    );
-  }
-  if (changed > 0) {
-    writeNotice(
-      pc.dim(
-        `  ${plural(changed, "scenario assertion")} changed in this change ${changed === 1 ? "is" : "are"} not compared — ` +
-          `${changed === 1 ? "it has" : "they have"} no stable contract at ${ref}. \`skillcheck test\` checks ${changed === 1 ? "it" : "them"}.\n`,
-      ),
-    );
-  }
-  return kept;
+interface ScenarioSelection {
+  scenarios: Scenario[];
+  changes: ScenarioContractChange[];
 }
 
-/** A scenario contract's semantic identity; list order does not change what it permits. */
-function scenarioContractKey(scenario: ReturnType<typeof loadScenarios>[number]): string {
-  return JSON.stringify({
-    prompt: scenario.prompt.trim(),
-    expect: scenario.expectNone ? ["none"] : [...scenario.expect].sort(),
-    forbid: [...scenario.forbid].sort(),
-  });
+function assertedAtBothRevisions(
+  scenarios: readonly Scenario[],
+  scenarioFile: string,
+  ref: string,
+  autoDiscover: boolean,
+  writeNotice: (text: string) => void,
+): ScenarioSelection {
+  let before: string | null = null;
+  let baselineFile = scenarioFile;
+  try {
+    for (const candidate of historicalScenarioCandidates(scenarioFile, autoDiscover)) {
+      const content = readFileAtRef(ref, candidate);
+      if (content === null) continue;
+      before = content;
+      baselineFile = candidate;
+      break;
+    }
+  } catch (err) {
+    writeNotice(
+      pc.yellow(
+        `skillcheck: could not read historical scenarios at ${ref} — ${(err as Error).message}; no scenario contracts were compared\n`,
+      ),
+    );
+    return { scenarios: [], changes: [] };
+  }
+
+  let baseline: Scenario[] = [];
+  if (before !== null) {
+    try {
+      baseline = parseScenarios(before, `${displayPath(baselineFile)}@${ref}`);
+    } catch (err) {
+      writeNotice(
+        pc.yellow(
+          `skillcheck: could not parse historical scenarios at ${ref} — ${(err as Error).message}; no scenario contracts were compared\n`,
+        ),
+      );
+      return { scenarios: [], changes: [] };
+    }
+  }
+
+  return selectStableScenarioContracts(baseline, scenarios);
+}
+
+/** Select semantic contracts present on both sides and name every skipped one. */
+function selectStableScenarioContracts(
+  baseline: readonly Scenario[],
+  current: readonly Scenario[],
+): ScenarioSelection {
+  const uniqueByContract = (items: readonly Scenario[]) => {
+    const seen = new Set<string>();
+    return items
+      .map(normalizeScenarioContract)
+      .filter((scenario) => {
+        const key = scenarioContractKey(scenario);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  };
+
+  const baseUnique = uniqueByContract(baseline);
+  const currentUnique = uniqueByContract(current);
+  const baselineKeys = new Set(baseUnique.map(scenarioContractKey));
+  const currentKeys = new Set(currentUnique.map(scenarioContractKey));
+  // Preserve each current entry whose semantic contract existed at the base.
+  // Distinct contracts may deliberately share a prompt, and every one runs.
+  const stable = current.filter((scenario) => baselineKeys.has(scenarioContractKey(scenario)));
+  const oldOnly = baseUnique.filter((scenario) => !currentKeys.has(scenarioContractKey(scenario)));
+  const newOnly = currentUnique.filter((scenario) => !baselineKeys.has(scenarioContractKey(scenario)));
+  const unpairedCurrent = [...newOnly];
+  const changes: ScenarioContractChange[] = [];
+
+  for (const beforeScenario of oldOnly) {
+    const index = unpairedCurrent.findIndex(
+      (afterScenario) => afterScenario.prompt === beforeScenario.prompt,
+    );
+    if (index === -1) {
+      changes.push({ kind: "removed", before: beforeScenario, after: null });
+      continue;
+    }
+    const [afterScenario] = unpairedCurrent.splice(index, 1);
+    changes.push({ kind: "changed", before: beforeScenario, after: afterScenario });
+  }
+  for (const afterScenario of unpairedCurrent) {
+    changes.push({ kind: "added", before: null, after: afterScenario });
+  }
+
+  return { scenarios: stable, changes };
+}
+
+/** Follow supported extension renames only for the auto-discovered file. */
+function historicalScenarioCandidates(
+  scenarioFile: string,
+  autoDiscover: boolean,
+): string[] {
+  if (!autoDiscover) return [scenarioFile];
+  return SCENARIO_FILENAMES.map((name) => join(dirname(scenarioFile), name));
 }
 
 /** `1 scenario` / `2 scenarios`. */
@@ -694,6 +757,19 @@ function historicalConfig(config: SkillcheckConfig): SkillcheckConfig {
   return { ...config, rules: { ...config.rules, "broken-references": "off" } };
 }
 
+/** Formats that have a meaningful trigger-contract representation. */
+function scenarioReportFormat(
+  format: Format,
+  command: "diff" | "test",
+): "pretty" | "json" | "markdown" | "github" {
+  if (format === "sarif" || format === "badge") {
+    throw new UsageError(
+      `${command} does not support --format ${format} — use pretty, json, markdown, or github`,
+    );
+  }
+  return format;
+}
+
 /**
  * The same `ignore` globs {@link collectDocs} applies, so a skill excluded from
  * the check isn't dragged back in by the historical side of the comparison.
@@ -710,6 +786,7 @@ function inScope(config: ReturnType<typeof loadConfig>["config"]): (doc: SkillDo
 // ──────────────────────────────────────────────────────────── test ──────────
 
 function commandTest(args: Args, io: CliIO): number {
+  const format = scenarioReportFormat(args.format, "test");
   const paths = pathsOf(args);
   requireExisting(paths);
 
@@ -736,10 +813,6 @@ function commandTest(args: Args, io: CliIO): number {
   const index = buildIndex(skills);
   const results = runScenarios(index, scenarios);
   const coverage = scenarioCoverage(index, scenarios);
-  const format =
-    args.format === "json" || args.format === "markdown" || args.format === "github"
-      ? args.format
-      : "pretty";
   if (format === "pretty") {
     io.out(
       `${pc.dim(`${displayPath(file)} — ${scenarios.length} scenario(s) against ${skills.length} skill(s)`)}\n\n`,

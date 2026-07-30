@@ -149,6 +149,18 @@ export interface SkillChange {
   fields: string[];
 }
 
+/**
+ * A scenario assertion that cannot be compared across revisions.
+ *
+ * These are review information, not failures: the current assertion still
+ * belongs to `skillcheck test`, while `diff` only judges contracts that exist
+ * unchanged on both sides.
+ */
+export type ScenarioContractChange =
+  | { kind: "added"; before: null; after: Scenario }
+  | { kind: "changed"; before: Scenario; after: Scenario }
+  | { kind: "removed"; before: Scenario; after: null };
+
 export interface DriftReport {
   /** The revision compared against, as the user spelled it. */
   ref: string;
@@ -159,6 +171,8 @@ export interface DriftReport {
   drifts: ProbeDrift[];
   /** Findings this change introduced or resolved, new ones first. */
   findings: FindingChange[];
+  /** Assertions skipped because no identical contract exists on both sides. */
+  scenarioChanges?: ScenarioContractChange[];
   probes: { total: number; scenarios: number; descriptions: number };
 }
 
@@ -368,6 +382,20 @@ function classify(
         detail: `${base.before ?? "no skill"} → ${base.after ?? "no skill"} — both satisfy ${expectation}`,
       };
     }
+
+    // `skillcheck test` calls this boundary out as too close to depend on. Diff
+    // must surface crossing it even when the numerical margin moved by less
+    // than the broader NARROW_DROP threshold below. An allowed winner change
+    // above remains the more specific event when both happen together.
+    if (scenarioBefore.status === "pass" && scenarioAfter.status === "close") {
+      return {
+        ...base,
+        kind: "narrowed",
+        detail:
+          scenarioAfter.reason ??
+          `${base.after ?? "the expected skill"} now satisfies the contract by too little to depend on`,
+      };
+    }
   }
 
   // Identity is the file, so a renamed skill is still the same skill.
@@ -507,6 +535,8 @@ export interface CompareInput {
   after: readonly SkillDoc[];
   /** Scenario prompts to use as probes, when the repo keeps a scenarios file. */
   scenarios?: readonly Scenario[];
+  /** Scenario contracts omitted because they were added, edited, or removed. */
+  scenarioChanges?: readonly ScenarioContractChange[];
   /**
    * Rule findings at each revision. Supplied by the caller rather than computed
    * here so this module stays pure and free of I/O — some rules read the
@@ -525,21 +555,40 @@ export interface CompareInput {
  * testable without a repository.
  */
 export function compareCorpora(input: CompareInput): DriftReport {
-  const { ref, before, after, scenarios = [], findingsBefore = [], findingsAfter = [] } = input;
+  const {
+    ref,
+    before,
+    after,
+    scenarios = [],
+    scenarioChanges = [],
+    findingsBefore = [],
+    findingsAfter = [],
+  } = input;
   const changes = skillChanges(before, after);
   const touchedFiles = new Set(changes.map((c) => c.file));
   const probes = buildProbes(before, after, scenarios);
   const indexBefore = buildIndex(before);
   const indexAfter = buildIndex(after);
+  const scenarioProbes = probes.filter(
+    (probe): probe is Probe & { scenario: Scenario } => probe.scenario !== undefined,
+  );
+  // Batch scenario evaluation so runScenarios builds its corpus-wide name set
+  // once per revision, not once per assertion. Matching still does the useful
+  // O(scenarios × skills) work; validation no longer adds another such pass.
+  const scenariosBefore = runScenarios(
+    indexBefore,
+    scenarioProbes.map((probe) => probe.scenario),
+  );
+  const scenariosAfter = runScenarios(
+    indexAfter,
+    scenarioProbes.map((probe) => probe.scenario),
+  );
 
   const drifts: ProbeDrift[] = [];
+  let scenarioIndex = 0;
   for (const probe of probes) {
-    const scenarioBefore = probe.scenario
-      ? runScenarios(indexBefore, [probe.scenario])[0]
-      : undefined;
-    const scenarioAfter = probe.scenario
-      ? runScenarios(indexAfter, [probe.scenario])[0]
-      : undefined;
+    const scenarioBefore = probe.scenario ? scenariosBefore[scenarioIndex] : undefined;
+    const scenarioAfter = probe.scenario ? scenariosAfter[scenarioIndex++] : undefined;
     const drift = classify(
       probe,
       scenarioBefore?.report ?? matchPrompt(indexBefore, probe.prompt),
@@ -566,6 +615,7 @@ export function compareCorpora(input: CompareInput): DriftReport {
     changes,
     drifts,
     findings: compareFindings(findingsBefore, findingsAfter, touchedFiles),
+    scenarioChanges: [...scenarioChanges],
     probes: {
       total: probes.length,
       scenarios: probes.filter((p) => p.source === "scenario").length,

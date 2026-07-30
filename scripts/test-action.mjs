@@ -49,6 +49,13 @@ function stepScript(name) {
   return step.run;
 }
 
+/** The full action step, for conditions and metadata the shell cannot exercise. */
+function stepDefinition(name) {
+  const step = action.runs.steps.find((s) => s.name === name);
+  if (!step) throw new Error(`action.yml has no step named "${name}"`);
+  return step;
+}
+
 const BASE_ENV = {
   SKILLCHECK_VERSION: actionVersion,
   SKILLCHECK_PATH: ".",
@@ -93,6 +100,16 @@ function check(label, { step, env, expect }) {
 const CHECK = "Run skillcheck";
 const TEST = "Run trigger scenarios";
 const DIFF = "Compare activation against the base revision";
+
+for (const name of [TEST, DIFF]) {
+  const condition = String(stepDefinition(name).if ?? "");
+  if (condition.includes("always()") && condition.includes("!cancelled()")) {
+    console.log(`  ✔ ${name} still reports after an earlier failure`);
+  } else {
+    console.error(`  ✖ ${name}\n      expected an always(), non-cancelled gate; got ${JSON.stringify(condition)}`);
+    failures++;
+  }
+}
 
 console.log(`action.yml under ${execFileSync(BASH, ["--version"]).toString().split("\n")[0]}\n`);
 
@@ -169,6 +186,12 @@ check("test step omits --summary when disabled", {
   expect: ["--yes", `skillcheck@${actionVersion}`, "test", ".", "--format", "markdown"],
 });
 
+check("test step uses GitHub output for a check-only format", {
+  step: TEST,
+  env: { SKILLCHECK_FORMAT: "sarif", SKILLCHECK_SUMMARY: "false" },
+  expect: ["--yes", `skillcheck@${actionVersion}`, "test", ".", "--format", "github"],
+});
+
 // `path` is documented as accepting several space-separated paths.
 check("check step splits a multi-path input", {
   step: CHECK,
@@ -212,9 +235,45 @@ check("diff step forwards config, so both revisions see the same skills", {
     ".",
     "--format",
     "github",
-    "--summary",
     "--config",
     "my dir/skillcheck.config.json",
+    "--summary",
+  ],
+});
+
+check("diff step honors format and disabled summary", {
+  step: DIFF,
+  env: {
+    SKILLCHECK_DIFF: "abc123",
+    SKILLCHECK_FORMAT: "json",
+    SKILLCHECK_SUMMARY: "false",
+  },
+  expect: [
+    "--yes",
+    `skillcheck@${actionVersion}`,
+    "diff",
+    "abc123",
+    ".",
+    "--format",
+    "json",
+  ],
+});
+
+check("diff step uses GitHub output for a check-only format", {
+  step: DIFF,
+  env: {
+    SKILLCHECK_DIFF: "abc123",
+    SKILLCHECK_FORMAT: "badge",
+    SKILLCHECK_SUMMARY: "false",
+  },
+  expect: [
+    "--yes",
+    `skillcheck@${actionVersion}`,
+    "diff",
+    "abc123",
+    ".",
+    "--format",
+    "github",
   ],
 });
 

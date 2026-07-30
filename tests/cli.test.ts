@@ -385,7 +385,7 @@ describe("test (trigger scenarios)", () => {
     expect(runCli(["test", root, "--scenarios", file], cap.io)).toBe(0);
     expect(cap.out()).toContain("2 passed");
     expect(stripVTControlCharacters(cap.out())).toContain(
-      "Assertion coverage: 1/1 skill named in expect or forbid",
+      "Assertion coverage: 1/1 distinct skill name referenced by expect or forbid",
     );
   });
 
@@ -434,7 +434,7 @@ describe("test (trigger scenarios)", () => {
     const summary = readFileSync(summaryFile, "utf8");
     expect(summary).toContain("## skillcheck — trigger contracts");
     expect(summary).toContain("expected no skill to match");
-    expect(summary).toContain("0 of 1 skill");
+    expect(summary).toContain("0 of 1 distinct skill name");
   });
 
   it("emits a warning annotation when a contract is too close to call", () => {
@@ -457,6 +457,25 @@ describe("test (trigger scenarios)", () => {
 
     expect(runCli(["test", root, "--scenarios", file, "--format", "github"], cap.io)).toBe(0);
     expect(cap.out()).toMatch(/::warning file=.*::\[trigger-contract\]/);
+    expect(cap.out()).toContain("Not named: grill-me");
+  });
+
+  it("escapes hostile skill names in GitHub coverage output", () => {
+    const root = tmpRepo({
+      ...CLEAN,
+      "skills/hostile/SKILL.md":
+        "---\nname: |\n  hostile\n  ::stop-commands::TOKEN\ndescription: Handles an unrelated queue. Use when the user asks to process that queue.\n---\n\n# Hostile\n",
+    });
+    const file = join(root, "scenarios.yaml");
+    writeFileSync(
+      file,
+      'scenarios:\n  - prompt: "export this analysis as a pdf"\n    expect: pdf-report\n',
+    );
+    const cap = captureIo();
+
+    expect(runCli(["test", root, "--scenarios", file, "--format", "github"], cap.io)).toBe(0);
+    expect(cap.out()).toContain("hostile%0A::stop-commands::TOKEN%0A");
+    expect(cap.out()).not.toContain("\n::stop-commands::TOKEN");
   });
 
   it("excludes config-ignored skills from the coverage denominator", () => {
@@ -477,7 +496,9 @@ describe("test (trigger scenarios)", () => {
     const cap = captureIo();
 
     expect(runCli(["test", root, "--scenarios", file, "--config", config], cap.io)).toBe(0);
-    expect(stripVTControlCharacters(cap.out())).toContain("Assertion coverage: 1/1 skill");
+    expect(stripVTControlCharacters(cap.out())).toContain(
+      "Assertion coverage: 1/1 distinct skill name",
+    );
     expect(cap.out()).not.toContain("invoice-parser");
   });
 
@@ -493,6 +514,16 @@ describe("test (trigger scenarios)", () => {
     const cap = captureIo();
     expect(runCli(["test", root, "--scenarios", file], cap.io)).toBe(2);
     expect(cap.err()).toContain("prompt");
+  });
+
+  it("rejects badge output instead of silently printing pretty trigger results", () => {
+    const { root, file } = scenarios(
+      'scenarios:\n  - prompt: "export this analysis as a pdf"\n    expect: pdf-report\n',
+    );
+    const cap = captureIo();
+
+    expect(runCli(["test", root, "--scenarios", file, "--format", "badge"], cap.io)).toBe(2);
+    expect(cap.err()).toContain("test does not support --format badge");
   });
 });
 
@@ -661,5 +692,16 @@ describe("GitHub integration", () => {
     const cap = captureIo();
     runCli([tmpRepo(BROKEN), "--format", "github"], cap.io);
     expect(cap.out()).toMatch(/::error file=.*,line=\d+::\[name-format\]/);
+  });
+
+  it("escapes workflow-command delimiters in annotation file paths", () => {
+    const root = tmpRepo({
+      "skills/PDF,Tools/SKILL.md": BROKEN["skills/PDF_Tools/SKILL.md"],
+    });
+    const cap = captureIo();
+
+    runCli([root, "--format", "github"], cap.io);
+    expect(cap.out()).toContain("PDF%2CTools/SKILL.md,line=");
+    expect(cap.out()).not.toContain("PDF,Tools/SKILL.md,line=");
   });
 });

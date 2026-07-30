@@ -11,7 +11,7 @@ inputs:
     required: false
     default: "."
   format:
-    description: "Output format: github (PR annotations), pretty, json, sarif, markdown, badge"
+    description: "Lint output format: github, pretty, json, sarif, markdown, or badge. Trigger/diff reports use github when sarif or badge is selected."
     required: false
     default: "github"
   config:
@@ -114,9 +114,10 @@ runs:
     - name: Run trigger scenarios
       shell: bash
       if: >-
-        inputs.scenarios == 'true' ||
-        (inputs.scenarios == 'auto' &&
-         hashFiles('skillcheck.scenarios.yaml', 'skillcheck.scenarios.yml') != '')
+        always() && !cancelled() &&
+        (inputs.scenarios == 'true' ||
+         (inputs.scenarios == 'auto' &&
+          hashFiles('skillcheck.scenarios.yaml', 'skillcheck.scenarios.yml') != ''))
       env:
         SKILLCHECK_VERSION: ${{ inputs.version }}
         SKILLCHECK_PATH: ${{ inputs.path }}
@@ -131,8 +132,10 @@ runs:
         args=()
         [ -n "$SKILLCHECK_CONFIG" ] && args+=(--config "$SKILLCHECK_CONFIG")
         [ "$SKILLCHECK_SUMMARY" = "true" ] && args+=(--summary)
+        report_format="$SKILLCHECK_FORMAT"
+        case "$report_format" in sarif|badge) report_format=github ;; esac
         npx --yes "skillcheck@${SKILLCHECK_VERSION}" test $SKILLCHECK_PATH \
-          --format "$SKILLCHECK_FORMAT" ${args[@]+"${args[@]}"}
+          --format "$report_format" ${args[@]+"${args[@]}"}
 
     # Activation drift: the one question a pull request raises that no other
     # check can answer, because the outcome isn't written in either revision of
@@ -140,15 +143,20 @@ runs:
     # fail only when they regress; repairs and allowed movement stay green.
     - name: Compare activation against the base revision
       shell: bash
-      if: inputs.diff != ''
+      if: always() && !cancelled() && inputs.diff != ''
       env:
         SKILLCHECK_VERSION: ${{ inputs.version }}
         SKILLCHECK_PATH: ${{ inputs.path }}
+        SKILLCHECK_FORMAT: ${{ inputs.format }}
         SKILLCHECK_CONFIG: ${{ inputs.config }}
         SKILLCHECK_DIFF: ${{ inputs.diff }}
+        SKILLCHECK_SUMMARY: ${{ inputs.summary }}
       run: |
         set -euo pipefail
         args=()
         [ -n "$SKILLCHECK_CONFIG" ] && args+=(--config "$SKILLCHECK_CONFIG")
+        [ "$SKILLCHECK_SUMMARY" = "true" ] && args+=(--summary)
+        report_format="$SKILLCHECK_FORMAT"
+        case "$report_format" in sarif|badge) report_format=github ;; esac
         npx --yes "skillcheck@${SKILLCHECK_VERSION}" diff "$SKILLCHECK_DIFF" $SKILLCHECK_PATH \
-          --format github --summary ${args[@]+"${args[@]}"}
+          --format "$report_format" ${args[@]+"${args[@]}"}
