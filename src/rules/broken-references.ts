@@ -13,6 +13,14 @@ function isRelativePath(target: string): boolean {
   return true;
 }
 
+function decodePath(target: string): string {
+  try {
+    return decodeURIComponent(target);
+  } catch {
+    return target;
+  }
+}
+
 /**
  * Skills routinely ship with references/, scripts/, templates/ alongside
  * SKILL.md. A body that points the model at a file that doesn't exist fails
@@ -37,7 +45,7 @@ export const brokenReferences: Rule = {
       for (const match of lineText.matchAll(LINK_RE)) {
         const target = match[1];
         if (!isRelativePath(target)) continue;
-        const abs = resolve(doc.dir, decodeURIComponent(target));
+        const abs = resolve(doc.dir, decodePath(target));
         if (!existsSync(abs)) {
           findings.push({
             ruleId: this.id,

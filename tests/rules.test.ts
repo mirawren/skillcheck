@@ -268,6 +268,14 @@ describe("broken-references", () => {
     });
     expect(runCheck([root]).findings.filter((f) => f.ruleId === "broken-references")).toEqual([]);
   });
+
+  it("reports malformed percent escapes as broken references", () => {
+    const findings = brokenReferences.check(doc({ body: "[bad](bad%ZZ.md)" }), emptyCtx);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ ruleId: "broken-references", severity: "error" });
+    expect(findings[0].message).toContain("bad%ZZ.md");
+  });
 });
 
 describe("unknown-keys", () => {
