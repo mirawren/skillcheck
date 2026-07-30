@@ -32,6 +32,7 @@ import {
   renderBudget,
   renderDrift,
   renderExplain,
+  type ScenarioReportFormat,
   renderScenarioResults,
   renderTrigger,
 } from "./report.js";
@@ -87,9 +88,10 @@ Usage
   Offline, deterministic, no credentials, no network.
 
 Options
-  --format <pretty|json|github|sarif|badge|markdown>
+  --format <pretty|json|github|sarif|badge|markdown|junit>
                           pretty (default) · github = PR annotations ·
                           sarif = code scanning · badge = shields.io endpoint JSON ·
+                          junit = GitLab/Jenkins/CircleCI test reports ·
                           sarif and badge apply to the default check only
   --fix                   apply safe automatic fixes, then re-check
   --fix-dry-run           report what --fix would change, write nothing
@@ -136,7 +138,7 @@ const COMMANDS = new Set([
   "rules",
   "languages",
 ]);
-const FORMATS = new Set(["pretty", "json", "github", "sarif", "badge", "markdown"]);
+const FORMATS = new Set(["pretty", "json", "github", "sarif", "badge", "markdown", "junit"]);
 
 interface Args {
   command: Command;
@@ -751,15 +753,22 @@ function historicalConfig(config: SkillcheckConfig): SkillcheckConfig {
   return { ...config, rules: { ...config.rules, "broken-references": "off" } };
 }
 
-/** Formats that have a meaningful trigger-contract representation. */
-function scenarioReportFormat(
-  format: Format,
-  command: "diff" | "test",
-): "pretty" | "json" | "markdown" | "github" {
-  if (format === "sarif" || format === "badge") {
-    throw new UsageError(
-      `${command} does not support --format ${format} — use pretty, json, markdown, or github`,
-    );
+/**
+ * Formats that have a meaningful trigger-contract representation.
+ *
+ * `diff` additionally rejects `junit`. A JUnit consumer keys its history on the
+ * case name, and a drift probe's name is derived from text that exists at two
+ * particular revisions — so every run would accumulate history about cases that
+ * never recur. A scenario prompt is stable, which is why `test` accepts it.
+ */
+function scenarioReportFormat(format: Format, command: "diff"): "pretty" | "json" | "markdown" | "github";
+function scenarioReportFormat(format: Format, command: "test"): ScenarioReportFormat;
+function scenarioReportFormat(format: Format, command: "diff" | "test"): ScenarioReportFormat {
+  const unsupported =
+    format === "sarif" || format === "badge" || (format === "junit" && command === "diff");
+  if (unsupported) {
+    const allowed = command === "diff" ? "pretty, json, markdown, or github" : "pretty, json, markdown, github, or junit";
+    throw new UsageError(`${command} does not support --format ${format} — use ${allowed}`);
   }
   return format;
 }

@@ -50,8 +50,7 @@ The bar for every one of these: **a false positive is worse than a miss.**
 
 | Improvement | Why |
 | --- | --- |
-| `--format junit` | CI systems that aren't GitHub |
-| `--tokens=api` | Exact token counts instead of the 4-chars estimate, opt-in and offline-optional |
+| `--tokens=api` | Exact token counts instead of the script-aware estimate, opt-in and offline-optional |
 | Config file in YAML/TOML | JSON has no comments, and rule config wants explaining |
 | `skillcheck why --all` | Run every scenario and print the full trigger matrix |
 | Watch mode | `skillcheck --watch` while authoring |

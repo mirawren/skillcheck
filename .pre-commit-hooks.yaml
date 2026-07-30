@@ -1,0 +1,29 @@
+# Hooks for the pre-commit framework (https://pre-commit.com). Add to your
+# .pre-commit-config.yaml:
+#
+#   repos:
+#     - repo: https://github.com/mirawren/skillcheck
+#       rev: v1.0.1
+#       hooks:
+#         - id: skillcheck
+#
+# The check runs over the whole repository rather than the staged files: two of
+# its rules compare skills against each other, so a per-file run would report a
+# collision on whichever half of the pair you happened to stage.
+- id: skillcheck
+  name: skillcheck
+  description: Check that agent skills, plugin manifests and AGENTS.md still say what they mean.
+  entry: skillcheck
+  args: ["."]
+  language: node
+  pass_filenames: false
+  files: '(^|/)(SKILL\.md|AGENTS\.md|CLAUDE\.md|plugin\.json|skillcheck\.config\.json)$'
+
+- id: skillcheck-test
+  name: skillcheck trigger tests
+  description: Run the checked-in trigger scenarios.
+  entry: skillcheck
+  args: ["test", "."]
+  language: node
+  pass_filenames: false
+  files: '(^|/)(SKILL\.md|skillcheck\.scenarios\.ya?ml)$'

@@ -11,7 +11,7 @@ inputs:
     required: false
     default: "."
   format:
-    description: "Lint output format: github, pretty, json, sarif, markdown, or badge. Trigger/diff reports use github when sarif or badge is selected."
+    description: "Lint output format: github, pretty, json, sarif, markdown, junit, or badge. Auxiliary reports fall back to github for a format they cannot render."
     required: false
     default: "github"
   config:
@@ -157,6 +157,10 @@ runs:
         [ -n "$SKILLCHECK_CONFIG" ] && args+=(--config "$SKILLCHECK_CONFIG")
         [ "$SKILLCHECK_SUMMARY" = "true" ] && args+=(--summary)
         report_format="$SKILLCHECK_FORMAT"
-        case "$report_format" in sarif|badge) report_format=github ;; esac
+        # `junit` joins the check-only formats here, and only here: a drift
+        # probe's name is derived from text at two particular revisions, so a
+        # JUnit consumer would accumulate history about cases that never recur.
+        # `test` keeps junit, because a scenario prompt is stable.
+        case "$report_format" in sarif|badge|junit) report_format=github ;; esac
         npx --yes "skillcheck@${SKILLCHECK_VERSION}" diff "$SKILLCHECK_DIFF" $SKILLCHECK_PATH \
           --format "$report_format" ${args[@]+"${args[@]}"}

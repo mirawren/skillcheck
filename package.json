@@ -52,6 +52,7 @@
   "files": [
     "dist",
     "action.yml",
+    ".pre-commit-hooks.yaml",
     "README.md",
     "LICENSE"
   ],

@@ -22,7 +22,7 @@ import {
 import { badgeColor, computeScore, type ScoreReport } from "./score.js";
 import type { CheckResult, Finding, RuleDocs, RuleInfo } from "./types.js";
 
-export type Format = "pretty" | "json" | "github" | "sarif" | "badge" | "markdown";
+export type Format = "pretty" | "json" | "github" | "sarif" | "badge" | "markdown" | "junit";
 
 export interface RenderMeta {
   /** skillcheck version, surfaced in SARIF tool metadata. */
@@ -55,6 +55,8 @@ export function render(result: CheckResult, format: Format, meta: RenderMeta = {
       return renderSarif(result, meta);
     case "badge":
       return renderBadge(score);
+    case "junit":
+      return renderJunit(result);
     case "markdown":
       return renderMarkdown(result, score, baselined);
     default:
@@ -148,6 +150,134 @@ function renderBadge({ score, grade }: ScoreReport): string {
 
 function portableFinding(f: Finding) {
   return { ...f, file: toPosix(f.file) };
+}
+
+// ─────────────────────────────────────────────────────────── JUnit ──────────
+
+/**
+ * JUnit XML — what every CI system that isn't GitHub reads.
+ *
+ * GitLab, Jenkins, CircleCI, Buildkite and Azure Pipelines all ingest this and
+ * nothing else, so without it skillcheck's findings are a wall of log text
+ * everywhere except one host. The mapping is the one linters have converged on:
+ * a scanned unit is a suite, a finding is a failing case, and a unit with no
+ * findings is a passing case — the last part matters, because a report holding
+ * only failures makes a repo look like it has four skills instead of forty.
+ *
+ * Not offered for `diff`. A JUnit consumer keys history on the case name, and a
+ * drift probe's name is derived from whatever text exists at two revisions —
+ * so the history it accumulated would be noise about cases that never recur.
+ */
+
+/**
+ * XML 1.0 has no escape for most control characters — they are forbidden in a
+ * document at all, so a parser rejects the whole file rather than the one
+ * attribute that carried one. They are dropped before escaping, because a
+ * report nobody can open is worse than one missing a byte nobody can see.
+ */
+const XML_FORBIDDEN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g;
+
+function xmlText(s: string): string {
+  return s
+    .replace(XML_FORBIDDEN, "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function xmlAttr(s: string): string {
+  return xmlText(s).replace(/"/g, "&quot;");
+}
+
+function renderJunit(result: CheckResult): string {
+  const units = [
+    ...(result.files.skills ?? []),
+    ...(result.files.plugins ?? []),
+    ...(result.files.contexts ?? []),
+  ];
+  const byFile = new Map<string, Finding[]>();
+  for (const file of units) byFile.set(file, []);
+  for (const f of result.findings) {
+    // A finding on a file that was not itself a scanned unit still has to be
+    // reported; losing it would make a green suite untrue.
+    const list = byFile.get(f.file) ?? [];
+    list.push(f);
+    byFile.set(f.file, list);
+  }
+
+  const out: string[] = ['<?xml version="1.0" encoding="UTF-8"?>'];
+  const failures = result.findings.length;
+  const cases = [...byFile.values()].reduce((n, list) => n + Math.max(1, list.length), 0);
+  out.push(
+    `<testsuites name="skillcheck" tests="${cases}" failures="${failures}" errors="0" skipped="0">`,
+  );
+
+  for (const [file, findings] of byFile) {
+    const name = xmlAttr(displayPath(file));
+    out.push(
+      `  <testsuite name="${name}" tests="${Math.max(1, findings.length)}" failures="${findings.length}" errors="0" skipped="0">`,
+    );
+    if (findings.length === 0) {
+      out.push(`    <testcase name="skillcheck" classname="${name}" />`);
+    }
+    for (const f of findings) {
+      // Consumers key history on (classname, name), so two findings from one
+      // rule in one file need distinct names or the second is dropped. The
+      // line is the only thing that separates them and the only thing a reader
+      // wants next to the rule id anyway.
+      const line = f.line ?? 1;
+      const caseName = findings.filter((o) => o.ruleId === f.ruleId).length > 1
+        ? `${f.ruleId}:${line}`
+        : f.ruleId;
+      out.push(`    <testcase name="${xmlAttr(caseName)}" classname="${name}">`);
+      out.push(
+        `      <failure type="${xmlAttr(f.severity)}" message="${xmlAttr(f.message)}">` +
+          xmlText(`${displayPath(f.file)}:${line}\n${f.message}${f.detail ? `\n\n${f.detail}` : ""}`) +
+          "</failure>",
+      );
+      out.push("    </testcase>");
+    }
+    out.push("  </testsuite>");
+  }
+
+  out.push("</testsuites>");
+  return out.join("\n");
+}
+
+/** `skillcheck test` as JUnit: a scenario is already a test case. */
+function renderScenarioJunit(results: readonly ScenarioResult[], source?: string): string {
+  const suite = xmlAttr(source ? displayPath(source) : "skillcheck.scenarios");
+  const { failed } = scenarioCounts(results);
+  const out: string[] = ['<?xml version="1.0" encoding="UTF-8"?>'];
+  out.push(
+    `<testsuites name="skillcheck trigger scenarios" tests="${results.length}" failures="${failed}" errors="0" skipped="0">`,
+  );
+  out.push(
+    `  <testsuite name="${suite}" tests="${results.length}" failures="${failed}" errors="0" skipped="0">`,
+  );
+  for (const r of results) {
+    const name = xmlAttr(r.scenario.prompt);
+    const expectation = describeExpectation(r.scenario);
+    if (r.status === "pass") {
+      out.push(`    <testcase name="${name}" classname="${suite}" />`);
+      continue;
+    }
+    out.push(`    <testcase name="${name}" classname="${suite}">`);
+    if (r.status === "fail") {
+      out.push(
+        `      <failure type="scenario" message="${xmlAttr(r.reason ?? "failed")}">` +
+          xmlText(`expected ${expectation}\nreached ${r.actual ?? "no skill"}\n${r.reason ?? ""}`) +
+          "</failure>",
+      );
+    } else if (r.status === "close") {
+      // Passing, but for reasons too thin to depend on. `system-out` keeps that
+      // visible without turning a warning into a red build.
+      out.push(`      <system-out>${xmlText(r.reason ?? "too close to call")}</system-out>`);
+    }
+    out.push("    </testcase>");
+  }
+  out.push("  </testsuite>", "</testsuites>");
+  return out.join("\n");
 }
 
 function renderGithub(result: CheckResult, baselined: number): string {
@@ -936,7 +1066,7 @@ function appendMarkdownScenarioChanges(
   );
 }
 
-export type ScenarioReportFormat = "pretty" | "json" | "markdown" | "github";
+export type ScenarioReportFormat = "pretty" | "json" | "markdown" | "github" | "junit";
 
 export interface ScenarioRenderOptions {
   /** Direct `expect` / `forbid` coverage of the scanned skill corpus. */
@@ -978,6 +1108,7 @@ export function renderScenarioResults(
       2,
     );
   }
+  if (format === "junit") return renderScenarioJunit(results, options.source);
   if (format === "markdown") return renderScenarioMarkdown(results, options.coverage);
   if (format === "github") return renderScenarioGithub(results, options);
 

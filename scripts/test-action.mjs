@@ -192,6 +192,14 @@ check("test step uses GitHub output for a check-only format", {
   expect: ["--yes", `skillcheck@${actionVersion}`, "test", ".", "--format", "github"],
 });
 
+// A scenario prompt is a stable test-case name, so `test` keeps junit while
+// `diff` falls back — the asymmetry is the point, and it needs asserting.
+check("test step keeps junit, which it can render", {
+  step: TEST,
+  env: { SKILLCHECK_FORMAT: "junit", SKILLCHECK_SUMMARY: "false" },
+  expect: ["--yes", `skillcheck@${actionVersion}`, "test", ".", "--format", "junit"],
+});
+
 // `path` is documented as accepting several space-separated paths.
 check("check step splits a multi-path input", {
   step: CHECK,
@@ -264,6 +272,26 @@ check("diff step uses GitHub output for a check-only format", {
   env: {
     SKILLCHECK_DIFF: "abc123",
     SKILLCHECK_FORMAT: "badge",
+    SKILLCHECK_SUMMARY: "false",
+  },
+  expect: [
+    "--yes",
+    `skillcheck@${actionVersion}`,
+    "diff",
+    "abc123",
+    ".",
+    "--format",
+    "github",
+  ],
+});
+
+// Without this fallback the whole job fails on exit 2 — the diff step refuses
+// junit, and it runs after the check step has already succeeded.
+check("diff step falls back from junit rather than failing the job", {
+  step: DIFF,
+  env: {
+    SKILLCHECK_DIFF: "abc123",
+    SKILLCHECK_FORMAT: "junit",
     SKILLCHECK_SUMMARY: "false",
   },
   expect: [

@@ -449,7 +449,40 @@ Commit that file and reference it:
 ```
 </details>
 
-Exit codes: `0` clean, `1` findings, `2` bad usage. Output formats: `pretty`, `github`, `json`, `sarif`, `markdown`, `badge`.
+Exit codes: `0` clean, `1` findings, `2` bad usage. Output formats: `pretty`, `github`, `json`, `sarif`, `markdown`, `junit`, `badge`.
+
+## Somewhere that isn't GitHub
+
+Nothing here needs GitHub. `--format junit` is the report every other CI system reads — a scanned file is a suite, a finding is a failing case, and a clean file is a passing one, so the run shows your real coverage instead of a list of what broke.
+
+```yaml
+# .gitlab-ci.yml
+skillcheck:
+  image: node:22
+  script:
+    - npx --yes skillcheck . --format junit > skillcheck.xml
+    - npx --yes skillcheck test . --format junit > skillcheck-scenarios.xml
+  artifacts:
+    when: always
+    reports:
+      junit: [skillcheck.xml, skillcheck-scenarios.xml]
+```
+
+The same file works in Jenkins, CircleCI, Buildkite and Azure Pipelines. `diff` is the one command that won't emit it: a JUnit consumer keys its history on the case name, and a drift probe is named after text that existed at two particular revisions — so the history would be about cases that never come back. Scenario prompts don't move, which is why `test` does emit it.
+
+And before the commit rather than after it:
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/mirawren/skillcheck
+    rev: v1.0.1
+    hooks:
+      - id: skillcheck          # the lint
+      - id: skillcheck-test     # and your trigger scenarios
+```
+
+Both hooks run over the whole repo, not the staged files — two of the rules compare skills against each other, so a per-file run would report a collision on whichever half of the pair you happened to stage.
 
 ## Skill health score
 
