@@ -185,8 +185,16 @@ function xmlText(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
+/**
+ * An attribute value additionally escapes `"`, and has its newlines collapsed.
+ *
+ * XML attribute-value normalization turns a literal newline into a space at
+ * parse time, so emitting one means the case name a consumer reads back is not
+ * the name that was written. A multi-line scenario prompt is legal YAML, so
+ * this is reachable; collapsing here makes the two agree.
+ */
 function xmlAttr(s: string): string {
-  return xmlText(s).replace(/"/g, "&quot;");
+  return xmlText(s.replace(/\s+/g, " ").trim()).replace(/"/g, "&quot;");
 }
 
 function renderJunit(result: CheckResult): string {

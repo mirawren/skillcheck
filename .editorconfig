@@ -1,0 +1,22 @@
+# https://editorconfig.org — so a contributor's editor matches the tree without
+# a formatter step. The style here is what the codebase already is.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 100
+
+[*.md]
+# Two trailing spaces are a hard line break in Markdown.
+trim_trailing_whitespace = false
+
+[tests/fixtures/**]
+# Fixtures are inputs the rules are tested against. Several are deliberately
+# malformed, and an editor tidying one on save silently changes a test.
+trim_trailing_whitespace = false
+insert_final_newline = false

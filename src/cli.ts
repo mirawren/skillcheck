@@ -624,6 +624,13 @@ function commandDiff(args: Args, io: CliIO): number {
     after,
     scenarios,
     scenarioChanges,
+    // Skills only, deliberately. `diff` answers what a change did to *which
+    // skill wins*, and a context file takes no part in that ranking. The half
+    // of this report that compares findings would need the historical file to
+    // say anything, and the historical side is read from git while
+    // `broken-references` — the finding that matters most in a context file —
+    // can only be answered by the filesystem, which holds one revision. So a
+    // context file is checked by `skillcheck .`, on the revision it exists on.
     findingsBefore: evaluate(before, [], historicalConfig(config)).findings,
     findingsAfter: evaluate(after, [], historicalConfig(config)).findings,
   });
