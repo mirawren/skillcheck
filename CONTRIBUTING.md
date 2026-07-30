@@ -67,6 +67,12 @@ fix(doc) {
 
 The engine re-parses and re-runs after each pass, so a fixer may repair one thing per pass. Only **safe** fixes belong here: no semantic guesswork, and never anything that could destroy an author's content. `name-format` normalizes an invalid name but deliberately won't rename a folder; `unknown-keys` renames a typo'd key but refuses when the real key already exists. When in doubt, leave it to the human.
 
+### Optional: run it over AGENTS.md too
+
+A rule about a *body* often applies just as well to a context file, where the same defect is read at the start of every session instead of on activation. Those live in `src/context.ts` as a `ContextRule` — the same shape minus the fixer, because mechanically rewriting somebody's hand-written instructions is not this tool's business.
+
+Reuse the skill-side rule id when it is the same defect with the same fix, and put the shared detection in `src/scan.ts` so the two can't drift apart. `broken-references` and `no-placeholders` both work that way: one id, one documented rule, two document kinds — and switching the rule off switches off all of it, which is what a reader expects `"off"` to mean. Give it a new id only when the failure is genuinely different, as `context-size` is: it budgets a cost paid unconditionally, where `body-size` budgets one paid on activation.
+
 ## Add your language
 
 **This is the most valuable contribution nobody else can make for you.**
@@ -188,13 +194,16 @@ on its own — open an issue with the description that was misread.
 | Path | What lives there |
 | --- | --- |
 | `src/rules/` | One file per rule. Start here. |
+| `src/context.ts` | `AGENTS.md` / `CLAUDE.md` as a document kind, and the short rule list that runs over it. |
+| `src/scan.ts` | Body scanners both document kinds share — dead references, leftover placeholders. |
+| `src/budget.ts` | What the repo's instructions occupy before anyone asks for anything (`skillcheck budget`). |
 | `src/match.ts` | The trigger simulation: BM25 over name + description, shared by `why`, `test`, and the cross-skill rules. |
 | `src/text.ts` | Tokenizing, stopwords, stemming — the shared vocabulary layer. |
 | `src/script.ts` | Unicode script classification, folding and terminal width. The layer that lets every check work outside English. |
 | `src/languages/` | One file per language: stopwords, trigger phrasings, worked samples. **Pure data — start here to add yours.** |
 | `src/fix.ts` | The multi-pass autofix engine (edits are pure; the CLI does the writing). |
 | `src/baseline.ts` | Accepting pre-existing findings so an established repo can adopt the tool today. |
-| `src/report.ts` | Every output format: pretty, github, json, sarif, markdown, badge. |
+| `src/report.ts` | Every output format: pretty, github, json, sarif, markdown, junit, badge. |
 | `src/cli.ts` | Argument parsing and commands. `runCli(argv, io)` returns an exit code — no `process.exit`, so it's testable in-process. |
 
 ## Dev setup
