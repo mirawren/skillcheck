@@ -247,20 +247,26 @@ export function buildProbes(
   after: readonly SkillDoc[],
   scenarios: readonly Scenario[] = [],
 ): Probe[] {
-  const byPrompt = new Map<string, Probe>();
+  const scenarioProbes: Probe[] = [];
+  const scenarioPrompts = new Set<string>();
 
+  // A prompt may carry several independent contracts (for example one exact
+  // winner plus one safety forbid). Preserve every scenario; deduplicating by
+  // request would silently discard whichever assertion appeared first.
   for (const scenario of scenarios) {
     const prompt = scenario.prompt.trim();
     if (!prompt) continue;
     const hasContract = scenario.expectNone || scenario.expect.length > 0 || scenario.forbid.length > 0;
-    byPrompt.set(prompt, {
+    scenarioProbes.push({
       prompt,
       source: "scenario",
       scenario: hasContract ? scenario : undefined,
       label: labelFor(prompt),
     });
+    scenarioPrompts.add(prompt);
   }
 
+  const descriptionProbes = new Map<string, Probe>();
   const beforeByFile = new Map(before.map((d) => [d.file, d]));
   for (const doc of after) {
     const was = beforeByFile.get(doc.file);
@@ -270,8 +276,8 @@ export function buildProbes(
     // Both wordings of an edited description, deduplicated when unchanged.
     for (const description of [doc.description, was.description]) {
       const prompt = description?.trim();
-      if (!prompt || byPrompt.has(prompt)) continue;
-      byPrompt.set(prompt, {
+      if (!prompt || scenarioPrompts.has(prompt) || descriptionProbes.has(prompt)) continue;
+      descriptionProbes.set(prompt, {
         prompt,
         source: "description",
         owner: skillName(doc),
@@ -281,7 +287,7 @@ export function buildProbes(
     }
   }
 
-  return [...byPrompt.values()];
+  return [...scenarioProbes, ...descriptionProbes.values()];
 }
 
 /**

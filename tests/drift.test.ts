@@ -95,6 +95,27 @@ describe("comparing two revisions of a corpus", () => {
     expect(driftFailed(report)).toBe(false);
   });
 
+  it("evaluates every contract when several scenarios use the same prompt", () => {
+    const report = compareCorpora({
+      ref: "main",
+      before: [NARROW, BROAD_BEFORE],
+      after: [NARROW, BROAD_AFTER],
+      scenarios: [
+        scenario("write release notes from the git log", {
+          expect: ["changelog-writer"],
+        }),
+        scenario("write release notes from the git log", {
+          expect: ["changelog-writer", "release-manager"],
+        }),
+      ],
+    });
+
+    expect(report.probes.scenarios).toBe(2);
+    expect(report.drifts.filter((drift) => drift.probe.source === "scenario").map((d) => d.kind))
+      .toEqual(["regressed", "allowed"]);
+    expect(driftFailed(report)).toBe(true);
+  });
+
   it("fails when an expect-none contract starts reaching a skill", () => {
     const added = skill(
       "webhooks",
