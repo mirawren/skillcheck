@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync, realpathSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 /**
@@ -56,7 +56,7 @@ export function discover(roots: string[]): Discovered {
   const pluginManifests = new Set<string>();
 
   for (const root of roots) {
-    const abs = resolve(root);
+    const abs = realpathSync.native(resolve(root));
     const stat = statSync(abs);
     if (stat.isFile()) {
       if (abs.endsWith("SKILL.md")) skillFiles.add(abs);

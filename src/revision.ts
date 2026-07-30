@@ -76,7 +76,7 @@ export function repoRoot(from: string = process.cwd()): string {
       `${from} is not inside a git repository, so there is no revision to compare against`,
     );
   }
-  return resolve(result.stdout.toString("utf8").trim());
+  return realpathSync.native(resolve(result.stdout.toString("utf8").trim()));
 }
 
 /**
