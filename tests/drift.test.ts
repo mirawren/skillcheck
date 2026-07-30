@@ -735,10 +735,6 @@ describe("the diff command", () => {
 
   it("fails closed when the current scenario file is malformed", () => {
     const root = gitRepo({
-      "skills/alpha/SKILL.md": skillMd(
-        "alpha",
-        "Handles alpha reports. Use when the user asks to write an alpha report.",
-      ),
       "skillcheck.scenarios.yaml":
         'version: 1\nscenarios:\n  - prompt: "write an alpha report"\n    expect: alpha\n',
     });
@@ -753,10 +749,6 @@ describe("the diff command", () => {
 
   it("fails closed when the historical scenario file is malformed", () => {
     const root = gitRepo({
-      "skills/alpha/SKILL.md": skillMd(
-        "alpha",
-        "Handles alpha reports. Use when the user asks to write an alpha report.",
-      ),
       "skillcheck.scenarios.yaml": "scenarios: [prompt: broken: yaml\n",
     });
     write(
@@ -770,6 +762,15 @@ describe("the diff command", () => {
     expect(runCli(["diff", "--format", "json"], cap.io)).toBe(2);
     expect(cap.out()).toBe("");
     expect(cap.err()).toContain("skillcheck.scenarios.yaml@HEAD is not valid YAML");
+  });
+
+  it("still treats an empty repo with no scenario contracts as nothing to compare", () => {
+    const root = gitRepo({ "README.md": "# Empty skill repo\n" });
+    process.chdir(root);
+    const cap = captureIo();
+
+    expect(runCli(["diff"], cap.io)).toBe(0);
+    expect(stripVTControlCharacters(cap.out())).toContain("nothing to compare");
   });
 
   it("exits clean, and says what it checked, when nothing moved", () => {

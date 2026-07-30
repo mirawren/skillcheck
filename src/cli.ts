@@ -558,17 +558,6 @@ function commandDiff(args: Args, io: CliIO): number {
   const after = collectDocs(paths, config).skills;
   const before = readSkillsAtRef(ref, paths).filter(inScope(config));
 
-  // A repo with no skills at either revision has nothing to compare, which is
-  // not a usage error — it is the state of every repo the moment after
-  // `skillcheck init` runs, and failing there would make the first pull request
-  // after adopting the tool red for no reason.
-  if (before.length === 0 && after.length === 0) {
-    io.out(
-      pc.dim(`no SKILL.md under ${paths.join(", ")}, at ${ref} or now — nothing to compare\n`),
-    );
-    return 0;
-  }
-
   // Scenario prompts are the sharpest probes there are, so they're used when the
   // repo has them. A malformed current or historical file fails closed: silently
   // dropping checked-in regression contracts would make a clean report untrue.
@@ -592,6 +581,22 @@ function commandDiff(args: Args, io: CliIO): number {
     );
     scenarios = selection.scenarios;
     scenarioChanges = selection.changes;
+  }
+
+  // A repo with no skills or scenario contracts at either revision has nothing
+  // to compare, which is not a usage error — it is the state of every repo the
+  // moment after `skillcheck init` runs. Scenario discovery deliberately comes
+  // first so malformed contracts still fail closed instead of taking this exit.
+  if (
+    before.length === 0 &&
+    after.length === 0 &&
+    scenarios.length === 0 &&
+    scenarioChanges.length === 0
+  ) {
+    io.out(
+      pc.dim(`no SKILL.md under ${paths.join(", ")}, at ${ref} or now — nothing to compare\n`),
+    );
+    return 0;
   }
 
   const report = compareCorpora({
