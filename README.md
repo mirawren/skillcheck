@@ -107,6 +107,8 @@ npx skillcheck languages  # which languages your skills are written in
 
 `init` writes a GitHub workflow, a starter scenarios file seeded from your own skills — so the first run passes — and prints the badge snippet. That's the whole adoption path.
 
+A check that discovers no `SKILL.md` or plugin manifest exits `2` and names the paths it searched. A typo or over-broad ignore pattern should never produce a reassuring `100/100 (A)` for checking nothing.
+
 Works with [Agent Skills](https://agentskills.io) (`SKILL.md`) as used by Claude Code, Codex, Cursor and other agent tools. It also checks the optional Claude Code `plugin.json` for valid JSON, its required `name`, and deliberate versioning; use [`claude plugin validate`](https://code.claude.com/docs/en/plugins-reference#debugging-and-development-tools) for Claude's complete host-specific schema.
 
 ## What your change did to which skill wins

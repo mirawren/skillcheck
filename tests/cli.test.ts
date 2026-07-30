@@ -83,6 +83,37 @@ describe("informational commands", () => {
 });
 
 describe("check", () => {
+  it("rejects an empty scan instead of awarding a perfect score", () => {
+    const root = tmpRepo({ "README.md": "# no skills here\n" });
+    const cap = captureIo();
+
+    expect(runCli([root], cap.io)).toBe(2);
+    expect(cap.out()).toBe("");
+    expect(cap.err()).toContain("no SKILL.md or .claude-plugin/plugin.json found");
+    expect(cap.all()).not.toContain("100/100");
+  });
+
+  it("rejects a scan whose config ignores every document", () => {
+    const root = tmpRepo(CLEAN);
+    const config = join(root, "skillcheck.config.json");
+    writeFileSync(config, '{"ignore":["**/SKILL.md"]}\n');
+    const cap = captureIo();
+
+    expect(runCli([root, "--config", config, "--format", "json"], cap.io)).toBe(2);
+    expect(cap.out()).toBe("");
+    expect(cap.err()).toContain("check the paths and ignore patterns");
+  });
+
+  it("still checks a plugin-only repository", () => {
+    const root = tmpRepo({
+      ".claude-plugin/plugin.json": '{"name":"release-tools","version":"1.0.0"}\n',
+    });
+    const cap = captureIo();
+
+    expect(runCli([root], cap.io)).toBe(0);
+    expect(cap.out()).toContain("1 plugin manifest checked");
+  });
+
   it("exits 0 on a clean repo", () => {
     const cap = captureIo();
     expect(runCli([tmpRepo(CLEAN)], cap.io)).toBe(0);

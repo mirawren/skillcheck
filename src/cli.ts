@@ -101,7 +101,7 @@ Options
 Exit codes
   0  clean (and warnings within --max-warnings)
   1  errors found, warnings over the limit, a failing scenario, or unintended drift
-  2  bad usage, bad config, or an internal error
+  2  bad usage, bad config, no inputs found, or an internal error
 `;
 
 type Command =
@@ -313,6 +313,13 @@ function commandCheck(args: Args, io: CliIO): number {
 
   const config = loadConfig(args.config).config;
   let docs = collectDocs(paths, config);
+  if (docs.skills.length === 0 && docs.manifests.length === 0) {
+    io.err(
+      `skillcheck: no SKILL.md or .claude-plugin/plugin.json found under ${paths.join(", ")}\n`,
+    );
+    io.err(pc.dim("  check the paths and ignore patterns in your config.\n"));
+    return 2;
+  }
   let ctx: CheckContext = { skills: docs.skills, options: config.options ?? {} };
 
   // ── autofix ──────────────────────────────────────────────────────────────
