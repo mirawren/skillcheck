@@ -839,6 +839,7 @@ pre {
 
 .install-card {
   display: flex;
+  min-width: 0;
   min-height: 360px;
   flex-direction: column;
   padding: 30px;
@@ -1144,6 +1145,10 @@ pre {
   .terminal-card {
     top: 40px;
     width: 100%;
+  }
+
+  .terminal-glow {
+    right: 0;
   }
 
   .terminal-body {
