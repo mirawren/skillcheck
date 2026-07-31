@@ -1,3 +1,5 @@
+import { realpathSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "../src/cli";
 import { computeBudget } from "../src/budget";
@@ -29,13 +31,13 @@ describe("context files are discovered", () => {
   });
 
   it("marks a nested one as not always loaded", () => {
-    const { docs } = check({
+    const { root, docs } = check({
       "AGENTS.md": "# Root\n",
       "packages/api/AGENTS.md": "# Nested\n",
     });
-    const byKind = Object.fromEntries(docs.contexts.map((c) => [c.file.replace(/.*test-\w+\//, ""), c.root]));
-    expect(byKind["AGENTS.md"]).toBe(true);
-    expect(byKind["packages/api/AGENTS.md"]).toBe(false);
+    const resolvedRoot = realpathSync.native(root);
+    expect(docs.contexts.find((c) => c.file === join(resolvedRoot, "AGENTS.md"))?.root).toBe(true);
+    expect(docs.contexts.find((c) => c.file === join(resolvedRoot, "packages/api/AGENTS.md"))?.root).toBe(false);
   });
 
   it("never enters node_modules — a dependency's AGENTS.md is not yours", () => {
