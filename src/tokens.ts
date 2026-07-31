@@ -59,7 +59,9 @@ const CHARS_PER_TOKEN: Readonly<Record<Script, number>> = {
 export function estimateTokens(text: string): number {
   if (!text) return 0;
   let tokens = 0;
-  for (const char of text) {
+  // Git may check out the same document with CRLF on Windows. A line-ending
+  // convention is not extra agent context, so it must not change the estimate.
+  for (const char of text.replace(/\r\n?/g, "\n")) {
     tokens += 1 / CHARS_PER_TOKEN[scriptOf(char.codePointAt(0)!)];
   }
   return Math.ceil(tokens);

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "../src/cli";
 import { computeBudget } from "../src/budget";
-import { collectDocs, evaluate } from "../src/index";
+import { collectDocs, estimateTokens, evaluate } from "../src/index";
 import { captureIo, cleanupTmpRepos, skillMd, tmpRepo } from "./helpers";
 
 afterEach(cleanupTmpRepos);
@@ -212,6 +212,11 @@ describe("a context file is a scored unit", () => {
 });
 
 describe("budget", () => {
+  it("prices LF and CRLF instructions identically", () => {
+    const instructions = "# Notes\n\nBuild with npm run build.\n".repeat(100);
+    expect(estimateTokens(instructions.replace(/\n/g, "\r\n"))).toBe(estimateTokens(instructions));
+  });
+
   it("separates what is always loaded from what a skill adds when it fires", () => {
     const { docs } = check({
       "skills/pdf-report/SKILL.md": SKILL,
