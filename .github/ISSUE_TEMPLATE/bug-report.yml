@@ -1,0 +1,72 @@
+name: Bug report
+description: skillcheck crashed, missed a failure, or produced the wrong result
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for making skillcheck more reliable. A small reproducer is usually enough to diagnose the problem.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What went wrong?
+      options:
+        - skillcheck crashed or hung
+        - skillcheck missed something it should catch
+        - A command produced the wrong result
+        - Installation or CI failed
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Paste the smallest SKILL.md, context file, plugin manifest, config, or scenario that reproduces the problem.
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and complete output
+      placeholder: npx skillcheck ...
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should have happened instead?
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: skillcheck version
+      placeholder: Output of npx skillcheck --version
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Node 22 · macOS 15, Ubuntu 24.04, Windows 11, or similar
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed secrets and private repository content from the reproduction.
+          required: true
+        - label: I searched existing issues for the same problem.
+          required: true

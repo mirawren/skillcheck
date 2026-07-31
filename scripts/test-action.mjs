@@ -26,8 +26,9 @@ import YAML from "yaml";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const action = YAML.parse(readFileSync(join(root, "action.yml"), "utf8"));
 const setupNode = action.runs.steps.find((step) => step.name === "Set up a supported Node.js runtime");
-if (setupNode?.uses !== "actions/setup-node@v6" || setupNode.with?.["node-version"] !== "20") {
-  throw new Error("action.yml must provision its supported Node 20 runtime with actions/setup-node@v6");
+const setupNodePinned = /^actions\/setup-node@[0-9a-f]{40}$/.test(setupNode?.uses ?? "");
+if (!setupNodePinned || setupNode.with?.["node-version"] !== "20") {
+  throw new Error("action.yml must provision Node 20 with a commit-pinned actions/setup-node");
 }
 const actionVersion = action.inputs.version.default;
 

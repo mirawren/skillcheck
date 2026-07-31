@@ -13,6 +13,9 @@ Maintainers are responsible for:
 - helping contributors land substantive work without optimizing for activity counts.
 
 The lead maintainer owns release credentials and the final release decision. The automated path and its verification steps are documented in [RELEASING.md](RELEASING.md).
+Owner-only repository settings, including Pages, branch protection, topics, and the social preview,
+are recorded in [docs/github-settings.md](docs/github-settings.md) so they can be audited instead of
+living only in the GitHub UI.
 
 ## Becoming a maintainer
 

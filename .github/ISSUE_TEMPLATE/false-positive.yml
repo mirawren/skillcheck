@@ -1,0 +1,61 @@
+name: False positive
+description: skillcheck flagged a skill or context file that is actually valid
+title: "false positive: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        False positives get priority. A linter that cries wolf gets switched off, and takes every useful finding with it.
+
+  - type: input
+    id: rule
+    attributes:
+      label: Rule
+      description: The rule id shown in parentheses after the finding.
+      placeholder: when-to-use
+    validations:
+      required: true
+
+  - type: textarea
+    id: skill
+    attributes:
+      label: File that was flagged
+      description: Paste a complete minimal file when possible.
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: why-valid
+    attributes:
+      label: Why is this valid?
+      description: Explain what makes the file correct despite the finding.
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Complete output
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Version and environment
+      placeholder: skillcheck 1.0.1 · Node 22 · Ubuntu 24.04
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed secrets and private repository content from the example.
+          required: true
+        - label: I searched existing issues for the same finding.
+          required: true

@@ -34,7 +34,7 @@
     "type": "git",
     "url": "git+https://github.com/mirawren/skillcheck.git"
   },
-  "homepage": "https://github.com/mirawren/skillcheck#readme",
+  "homepage": "https://mirawren.github.io/skillcheck/",
   "bugs": {
     "url": "https://github.com/mirawren/skillcheck/issues"
   },
@@ -72,7 +72,8 @@
     "test:action": "node scripts/test-action.mjs",
     "test:release": "node scripts/test-release.mjs",
     "check:workflows": "node scripts/check-workflows.mjs",
-    "check": "npm run build && npm run typecheck && npm test && npm run check:workflows && npm run test:action && npm run test:release && npm run docs:check && npm run check:examples && npm run selfcheck",
+    "check:site": "node scripts/check-site.mjs",
+    "check": "npm run build && npm run typecheck && npm test && npm run check:workflows && npm run check:site && npm run test:action && npm run test:release && npm run docs:check && npm run check:examples && npm run selfcheck",
     "prepublishOnly": "npm run check"
   },
   "dependencies": {

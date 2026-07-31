@@ -4,6 +4,17 @@ Notable changes. This project follows [semantic versioning](https://semver.org/)
 
 ## Unreleased
 
+### Project presentation and GitHub operations
+
+- Added a dependency-free project website, an original 1280 × 640 social card, and a GitHub Pages
+  deployment workflow. The README now leads with the same visual identity and links directly to
+  the short adoption path.
+- Replaced free-form issue templates with validated issue forms that use labels already present in
+  the repository, added a support guide, and made the issue chooser route security reports to the
+  private advisory channel.
+- Added CodeQL scanning, immutable commit pins for third-party Actions, workflow concurrency and
+  timeouts, and automated checks for the site, issue forms, Dependabot config, and Action pins.
+
 ### `AGENTS.md` and `CLAUDE.md` are checked
 
 - **A new document kind.** A skill's body is opt-in — it costs nothing until the model picks it. A context file is not: it is read before the user's first word and carried by every request in the session. Nothing checked those files, and they fail the same quiet way a skill does. `skillcheck .` now discovers `AGENTS.md` and `CLAUDE.md` at each scanned root and below it, applies `ignore` globs to them, scores them as units, and counts them in every output format. A repo with no skills at all is no longer an empty scan.

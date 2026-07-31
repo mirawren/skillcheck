@@ -1,11 +1,17 @@
 # skillcheck
 
+[![skillcheck — the preflight for agent skills that fail silently](https://raw.githubusercontent.com/mirawren/skillcheck/main/site/assets/social-preview.jpg)](https://mirawren.github.io/skillcheck/)
+
 **When an agent skips your skill, nothing errors. No warning, no log line, no failed build. skillcheck is the preflight for that silence — offline, in CI.**
 
 [![CI](https://github.com/mirawren/skillcheck/actions/workflows/ci.yml/badge.svg)](https://github.com/mirawren/skillcheck/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/skillcheck)](https://www.npmjs.com/package/skillcheck)
 [![node](https://img.shields.io/node/v/skillcheck)](https://www.npmjs.com/package/skillcheck)
 [![license](https://img.shields.io/npm/l/skillcheck)](LICENSE)
+
+[Website](https://mirawren.github.io/skillcheck/) · [Get started](#get-started) ·
+[Rule reference](docs/rules.md) · [Trigger scenarios](docs/scenarios.md) ·
+[GitHub Action](#in-ci) · [Contributing](CONTRIBUTING.md)
 
 A skill's `description` is the only text a model reads before deciding whether to load it. Get it wrong and nothing errors — no warning, no log line. The skill just doesn't get picked, on someone else's machine, and you find out from a bug report that says "it didn't do the thing".
 
@@ -280,7 +286,7 @@ and nested. A repo with no skills at all is now worth running it in.
 The `@` heuristic is deliberately narrow, because this rule reports at error
 severity: a token counts as an import only if it holds a `/` and ends in a file
 extension. `@types/node`, `ops@example.com`, `@octocat` and a fenced example are
-all left alone. If yours isn't, that's [a false positive worth filing](https://github.com/mirawren/skillcheck/issues/new?template=false-positive.md).
+all left alone. If yours isn't, that's [a false positive worth filing](https://github.com/mirawren/skillcheck/issues/new?template=false-positive.yml).
 
 ### What it all costs before anyone asks for anything
 
@@ -596,11 +602,14 @@ Two contributions matter most, and both are small.
 
 **[Add a rule.](CONTRIBUTING.md)** Most are under 100 lines including tests; [docs/GOOD_FIRST_RULES.md](docs/GOOD_FIRST_RULES.md) is a backlog of checks that are ready to be written.
 
-And the one that helps most of all: run skillcheck on your own skills and file [a false positive](https://github.com/mirawren/skillcheck/issues/new?template=false-positive.md) if it flags something that's actually fine. Those get priority — a linter that cries wolf gets deleted, and it takes every other rule with it.
+And the one that helps most of all: run skillcheck on your own skills and file [a false positive](https://github.com/mirawren/skillcheck/issues/new?template=false-positive.yml) if it flags something that's actually fine. Those get priority — a linter that cries wolf gets deleted, and it takes every other rule with it.
 
 Maintainers and contributors who already do substantive open-source work can use the source-linked [Claude for Open Source eligibility and evidence guide](docs/claude-for-oss.md). It helps qualified individuals document real work; contributing to skillcheck by itself does not establish eligibility.
 
 Project decisions and release responsibilities are documented in [MAINTAINERS.md](MAINTAINERS.md). Maintainer release steps are in [RELEASING.md](RELEASING.md).
+
+Need help choosing the right report? Start with [SUPPORT.md](SUPPORT.md). Repository owners can
+reproduce the GitHub-side settings in [docs/github-settings.md](docs/github-settings.md).
 
 ## License
 

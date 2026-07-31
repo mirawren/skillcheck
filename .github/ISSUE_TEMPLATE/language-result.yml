@@ -1,0 +1,61 @@
+name: Incorrect language result
+description: Report a supported language that skillcheck detects or analyzes incorrectly
+title: "lang bug: "
+labels: [bug]
+body:
+  - type: input
+    id: language
+    attributes:
+      label: Language
+      description: Give its English name, endonym, and BCP-47 primary code when known.
+      placeholder: Ukrainian · українська · uk
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What went wrong?
+      options:
+        - The language was detected as a different language
+        - when-to-use flagged a description that states its trigger
+        - when-to-use missed a capability-only description
+        - Tokenization or ranking dropped meaningful words
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description involved
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Complete output
+      description: Include skillcheck languages and skillcheck why output when relevant.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Version and environment
+      placeholder: skillcheck 1.0.1 · Node 22 · Ubuntu 24.04
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed secrets and private repository content from the example.
+          required: true
+        - label: I searched existing issues for the same language result.
+          required: true

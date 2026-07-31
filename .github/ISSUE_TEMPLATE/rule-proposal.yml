@@ -1,0 +1,62 @@
+name: Rule proposal
+description: Propose a deterministic check for a silent agent-instruction failure
+title: "rule: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every rule must name a failure that is silent at runtime: the skill will not load, will not trigger, triggers wrongly, wastes tokens, or points to something absent.
+
+  - type: textarea
+    id: failure
+    attributes:
+      label: Failure mode
+      description: What breaks for the person using the skill? Link a specification, issue, or real example when available.
+    validations:
+      required: true
+
+  - type: textarea
+    id: failing-example
+    attributes:
+      label: Example that should fail
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: passing-example
+    attributes:
+      label: Example that should pass
+      render: markdown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Suggested severity
+      options:
+        - Error — the skill will not work correctly
+        - Warning — it works, but carries a real cost or risk
+    validations:
+      required: true
+
+  - type: textarea
+    id: false-positives
+    attributes:
+      label: False-positive boundary
+      description: What valid file is most likely to resemble this failure, and how could the rule avoid flagging it?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Would you like to implement it?
+      options:
+        - Yes, with maintainer guidance
+        - Maybe
+        - No
+    validations:
+      required: true

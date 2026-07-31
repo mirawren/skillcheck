@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script>document.documentElement.classList.add("js");</script>
+    <meta name="theme-color" content="#101217">
+    <meta
+      name="description"
+      content="skillcheck catches agent skills and instruction files that fail silently. Offline, deterministic, and built for CI."
+    >
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="skillcheck">
+    <meta property="og:title" content="skillcheck — the preflight for agent skills">
+    <meta
+      property="og:description"
+      content="Catch skills and agent instructions that fail silently — before they ship."
+    >
+    <meta
+      property="og:image"
+      content="https://mirawren.github.io/skillcheck/assets/social-preview.jpg"
+    >
+    <meta property="og:image:width" content="1280">
+    <meta property="og:image:height" content="640">
+    <meta
+      property="og:image:alt"
+      content="skillcheck — the preflight for agent skills that fail silently"
+    >
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="skillcheck — the preflight for agent skills">
+    <meta
+      name="twitter:description"
+      content="Catch skills and agent instructions that fail silently — before they ship."
+    >
+    <meta
+      name="twitter:image"
+      content="https://mirawren.github.io/skillcheck/assets/social-preview.jpg"
+    >
+    <meta
+      name="twitter:image:alt"
+      content="skillcheck — the preflight for agent skills that fail silently"
+    >
+    <link rel="canonical" href="https://mirawren.github.io/skillcheck/">
+    <link rel="stylesheet" href="styles.css">
+    <title>skillcheck — catch agent skills that fail silently</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="skillcheck home">
+        <span class="brand-mark" aria-hidden="true"><span></span></span>
+        <span>skillcheck</span>
+      </a>
+      <button class="menu-button" type="button" aria-expanded="false" aria-controls="site-nav">
+        <span class="sr-only">Open navigation</span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+      </button>
+      <nav id="site-nav" class="site-nav" aria-label="Primary navigation">
+        <a href="#why">Why</a>
+        <a href="#features">Features</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/mirawren/skillcheck/blob/main/docs/rules.md">Rules</a>
+        <a class="nav-cta" href="https://github.com/mirawren/skillcheck">View on GitHub</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section id="top" class="hero shell">
+        <div class="hero-copy">
+          <p class="eyebrow"><span></span> Agent instruction QA, from local to CI</p>
+          <h1>Your agent didn’t ignore you. It never found the skill.</h1>
+          <p class="hero-lede">
+            skillcheck catches the silent failures in <code>SKILL.md</code>,
+            <code>AGENTS.md</code>, <code>CLAUDE.md</code>, and Claude Code plugins — before
+            they reach somebody else’s machine.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#install">Run the preflight</a>
+            <a class="button button-secondary" href="https://github.com/mirawren/skillcheck">
+              Explore the source <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+          <ul class="proof-strip" aria-label="Project facts">
+            <li><strong>16</strong><span>failure checks</span></li>
+            <li><strong>24</strong><span>languages</span></li>
+            <li><strong>0</strong><span>network calls</span></li>
+          </ul>
+        </div>
+
+        <div class="hero-visual" aria-label="Example skillcheck terminal report">
+          <div class="terminal-glow" aria-hidden="true"></div>
+          <div class="terminal-card">
+            <div class="terminal-bar">
+              <div class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+              <span>activation report</span>
+              <span class="terminal-state"><i></i> local</span>
+            </div>
+            <div class="terminal-body">
+              <p><span class="prompt">$</span> npx skillcheck why <span class="string">“review my code changes”</span></p>
+              <div class="terminal-rule"></div>
+              <div class="request-line"><span>request</span><strong>review my code changes</strong></div>
+              <div class="rank-row">
+                <span class="rank">1.</span>
+                <strong>review-me</strong>
+                <span class="meter"><i style="--score: 54%"></i></span>
+                <b>54%</b>
+              </div>
+              <div class="rank-row muted">
+                <span class="rank">2.</span>
+                <strong>grill-me</strong>
+                <span class="meter"><i style="--score: 46%"></i></span>
+                <b>46%</b>
+              </div>
+              <div class="diagnosis">
+                <span aria-hidden="true">⚠</span>
+                <p><strong>Coin flip detected.</strong> Both skills compete on the same words.</p>
+              </div>
+            </div>
+          </div>
+          <div class="score-card">
+            <span class="score-label">Skill health</span>
+            <strong>79<span>/100</span></strong>
+            <span class="score-grade">C · needs attention</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="marquee" aria-label="Supported workflow">
+        <div>
+          <span>Lint</span><i>✦</i><span>Simulate</span><i>✦</i><span>Test</span><i>✦</i>
+          <span>Diff</span><i>✦</i><span>Ship</span><i>✦</i><span>Stay deterministic</span>
+        </div>
+      </section>
+
+      <section id="why" class="section shell problem-section">
+        <div class="section-heading">
+          <p class="kicker">The invisible bug</p>
+          <h2>Nothing crashes when a skill is unreachable.</h2>
+        </div>
+        <div class="problem-layout">
+          <p class="problem-lede">
+            A description can be valid YAML, read beautifully, and still lose the one decision
+            that matters: whether the agent loads it. Ordinary linters stop before that question.
+          </p>
+          <div class="before-after" aria-label="Before and after skillcheck">
+            <article>
+              <span class="card-index">Without skillcheck</span>
+              <h3>“It didn’t do the thing.”</h3>
+              <p>A vague bug report arrives after release, with no log line and no reproducible trigger decision.</p>
+            </article>
+            <article class="after-card">
+              <span class="card-index">With skillcheck</span>
+              <h3>“These two descriptions are a coin flip.”</h3>
+              <p>The pull request names the competing skills, the binding words, and the regression that introduced it.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="section shell feature-section">
+        <div class="section-heading split-heading">
+          <div>
+            <p class="kicker">Proof, not vibes</p>
+            <h2>Every check answers a failure somebody can feel.</h2>
+          </div>
+          <p>No prose grading. No model calls. No preference dressed up as policy.</p>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature-card feature-card-wide">
+            <div class="feature-icon" aria-hidden="true">01</div>
+            <div>
+              <h3>Know which skill wins</h3>
+              <p>
+                Rank every skill against a real request. A close result is named as a coin flip,
+                with the words that made the descriptions collide.
+              </p>
+              <code>skillcheck why “review this pull request”</code>
+            </div>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">02</div>
+            <h3>Turn triggers into tests</h3>
+            <p>Check in the prompts that must reach — or must never reach — a particular skill.</p>
+            <a href="https://github.com/mirawren/skillcheck/blob/main/docs/scenarios.md">Scenario contract <span aria-hidden="true">→</span></a>
+          </article>
+          <article class="feature-card dark-card">
+            <div class="feature-icon" aria-hidden="true">03</div>
+            <h3>See what a pull request changed</h3>
+            <p>Catch a request changing hands even when both edited descriptions still lint cleanly.</p>
+            <code>skillcheck diff main</code>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">04</div>
+            <h3>Budget always-on context</h3>
+            <p>Separate the descriptions paid on every request from the skill body loaded only when it fires.</p>
+            <code>skillcheck budget</code>
+          </article>
+          <article class="feature-card feature-card-accent">
+            <div class="feature-icon" aria-hidden="true">05</div>
+            <h3>Work across languages</h3>
+            <p>Unicode-aware detection and trigger checks for 24 languages, without guessing where evidence is thin.</p>
+            <a href="https://github.com/mirawren/skillcheck/blob/main/docs/languages.md">Language registry <span aria-hidden="true">→</span></a>
+          </article>
+        </div>
+      </section>
+
+      <section class="section trust-section">
+        <div class="shell trust-layout">
+          <div class="trust-copy">
+            <p class="kicker">Safe on every fork</p>
+            <h2>Determinism is the product.</h2>
+            <p>
+              skillcheck reads Markdown and YAML as data. It does not execute instructions,
+              open sockets, call a model, collect telemetry, or require credentials.
+            </p>
+            <a class="text-link" href="https://github.com/mirawren/skillcheck/blob/main/SECURITY.md">
+              Read the threat model <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+          <dl class="trust-facts">
+            <div><dt>Runtime dependencies</dt><dd>2</dd></div>
+            <div><dt>Postinstall scripts</dt><dd>0</dd></div>
+            <div><dt>Credentials required</dt><dd>0</dd></div>
+            <div><dt>Network access</dt><dd>None</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section id="install" class="section shell install-section">
+        <div class="section-heading split-heading">
+          <div>
+            <p class="kicker">One command to evidence</p>
+            <h2>Run it now. Keep it in CI.</h2>
+          </div>
+          <p>Node 20 or newer. No account, config, daemon, or API key.</p>
+        </div>
+
+        <div class="install-grid">
+          <article class="install-card install-card-primary">
+            <div class="install-card-heading">
+              <span>Local preflight</span>
+              <button class="copy-button" type="button" data-copy="npx skillcheck ." aria-live="polite">Copy</button>
+            </div>
+            <pre><code><span>$</span> npx skillcheck .</code></pre>
+            <p>Scans every skill, plugin manifest, and agent context file it can discover.</p>
+          </article>
+
+          <article class="install-card">
+            <div class="install-card-heading">
+              <span>GitHub Action</span>
+              <a href="https://github.com/mirawren/skillcheck#in-ci">View setup <span aria-hidden="true">↗</span></a>
+            </div>
+            <pre><code><span>- uses:</span> actions/checkout@v6
+  <span>with:</span>
+    fetch-depth: 0
+<span>- uses:</span> mirawren/skillcheck@v1
+  <span>with:</span>
+    diff: $&#123;&#123; github.event.pull_request.base.sha &#125;&#125;</code></pre>
+            <p>PR annotations, job summaries, trigger scenarios, and activation drift in one check.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section shell contributor-section">
+        <div class="contributor-card">
+          <div>
+            <p class="kicker">Built in public</p>
+            <h2>The next language should come from someone who speaks it.</h2>
+            <p>
+              A language pack is one pure-data file. A new rule is usually under 100 lines with
+              tests. The contracts are designed so maintainers can review both with confidence.
+            </p>
+          </div>
+          <div class="contributor-actions">
+            <a class="button button-light" href="https://github.com/mirawren/skillcheck/blob/main/CONTRIBUTING.md">Contribute</a>
+            <a class="text-link light-link" href="https://github.com/mirawren/skillcheck/issues">Browse issues <span aria-hidden="true">→</span></a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer shell">
+      <a class="brand footer-brand" href="#top">
+        <span class="brand-mark" aria-hidden="true"><span></span></span>
+        <span>skillcheck</span>
+      </a>
+      <p>Silent failures deserve a failed check.</p>
+      <nav aria-label="Footer navigation">
+        <a href="https://github.com/mirawren/skillcheck">GitHub</a>
+        <a href="https://www.npmjs.com/package/skillcheck">npm</a>
+        <a href="https://github.com/mirawren/skillcheck/blob/main/SECURITY.md">Security</a>
+        <a href="https://github.com/mirawren/skillcheck/blob/main/LICENSE">MIT License</a>
+      </nav>
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>

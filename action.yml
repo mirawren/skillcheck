@@ -73,7 +73,7 @@ runs:
   using: "composite"
   steps:
     - name: Set up a supported Node.js runtime
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
       with:
         node-version: "20"
         package-manager-cache: false

@@ -1,0 +1,50 @@
+name: New language
+description: Request support for a language skillcheck does not read yet
+title: "lang: "
+labels: [enhancement]
+body:
+  - type: input
+    id: language
+    attributes:
+      label: Language
+      description: Give its English name, endonym, and BCP-47 primary code when known.
+      placeholder: Tamil · தமிழ் · ta
+    validations:
+      required: true
+
+  - type: textarea
+    id: trigger-description
+    attributes:
+      label: A natural description that says when to use the skill
+      description: Write it as a native speaker would, including both the capability and its trigger.
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: capability-description
+    attributes:
+      label: A description that states only the capability
+      description: This is the comparison case that should still be reported by when-to-use.
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: phrasing
+    attributes:
+      label: How do you naturally say “use this when…”?
+      description: Two or three ordinary phrasings are the most useful evidence for a language pack.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Would you like to write the language pack?
+      options:
+        - Yes, with maintainer guidance
+        - Maybe
+        - No, but the examples above may be used
+    validations:
+      required: true

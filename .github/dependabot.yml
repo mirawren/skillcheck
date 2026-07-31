@@ -7,6 +7,9 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 5
+    labels: [dependencies]
+    commit-message:
+      prefix: deps
     groups:
       dev-dependencies:
         dependency-type: development
@@ -15,6 +18,9 @@ updates:
     directory: "/"
     schedule:
       interval: monthly
+    labels: [dependencies]
+    commit-message:
+      prefix: deps
     groups:
       actions:
         patterns: ["*"]
