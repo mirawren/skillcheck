@@ -5,9 +5,9 @@
 **When an agent skips your skill, nothing errors. No warning, no log line, no failed build. skillcheck is the preflight for that silence — offline, in CI.**
 
 [![CI](https://github.com/mirawren/skillcheck/actions/workflows/ci.yml/badge.svg)](https://github.com/mirawren/skillcheck/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/skillcheck)](https://www.npmjs.com/package/skillcheck)
-[![node](https://img.shields.io/node/v/skillcheck)](https://www.npmjs.com/package/skillcheck)
-[![license](https://img.shields.io/npm/l/skillcheck)](LICENSE)
+[![version](https://img.shields.io/github/package-json/v/mirawren/skillcheck)](package.json)
+[![node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)](package.json)
+[![license](https://img.shields.io/github/license/mirawren/skillcheck)](LICENSE)
 
 [Website](https://mirawren.github.io/skillcheck/) · [Get started](#get-started) ·
 [Rule reference](docs/rules.md) · [Trigger scenarios](docs/scenarios.md) ·

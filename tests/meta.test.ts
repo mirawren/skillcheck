@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   isPlaceholderOwner,
@@ -8,6 +9,13 @@ import {
 } from "../src/meta";
 
 const FALLBACK = `https://github.com/${OWNER_PLACEHOLDER}/skillcheck`;
+const README = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+
+describe("README badges", () => {
+  it("does not query npm before the package exists there", () => {
+    expect(README).not.toContain("img.shields.io/npm/");
+  });
+});
 
 describe("normalizeRepoUrl", () => {
   it("strips npm's git+ prefix and .git suffix", () => {
