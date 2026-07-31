@@ -14,6 +14,7 @@ const required = [
   "script.js",
   "robots.txt",
   "sitemap.xml",
+  "favicon.svg",
   ".nojekyll",
   "assets/social-preview.jpg",
 ];
